@@ -1,0 +1,15 @@
+{
+  "name": "claude-agent-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Claude Agent SDK Demo - DeepResearch 多 Agent 研究系统",
+  "scripts": {
+    "dev": "cd deepresearch && npm run dev",
+    "build": "cd deepresearch && npm run build",
+    "start": "cd deepresearch && npm start",
+    "install:all": "cd deepresearch && npm install"
+  },
+  "keywords": ["claude", "agent", "sdk", "ai"],
+  "author": "",
+  "license": "MIT"
+}
