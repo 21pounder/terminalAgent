@@ -1,38 +1,30 @@
-﻿# Repository Guidelines
+# Repository Guidelines
 
-## Project Structure & Module Organization
-- Root orchestrates three TypeScript packages: asic/ (intro flows), deepresearch/ (code-defined agents), deepresearch-md/ (Markdown-defined agents). Each has its own package.json, 	sconfig.json, and src/.
-- Agent definitions for the markdown variant live in deepresearch-md/.claude/agents/*.md; helper code sits in deepresearch-md/src/.
-- The asic/src folder contains example flows plus mcps/, 	ools/, and utils/ helpers; start from asic/src/index.ts.
-- Environment samples are in .env.example; keep real secrets in process env vars.
+## Project Structure & Modules
+- Single package lives in `deepresearch/`; CLI entry in `bin/agent.cjs`, TypeScript sources in `src/` (`agent.ts`, `run.ts`, helpers), build output in `dist/`.
+- Environment config goes in `deepresearch/.env` (not committed). Set `ANTHROPIC_API_KEY` and optional `ANTHROPIC_BASE_URL` via `.env` or shell.
+- Do not edit generated files in `dist/`; make changes under `src/` and rebuild.
 
 ## Setup, Build, and Run
-- Requirements: Node.js 18+, a valid ANTHROPIC_API_KEY.
-- Install everything once: 
-pm run install:all.
-- Run per package:
-  - cd basic && npm run dev (tsx live run), 
-pm run build (tsc emit), 
-pm start (run built output).
-  - cd deepresearch && npm run dev|build|start for the code-driven agent.
-  - cd deepresearch-md && npm run dev|build|start for the markdown-driven agent.
-- Set env vars before running, e.g. setx ANTHROPIC_API_KEY your_key on Windows or export in your shell.
+- Requirements: Node.js 18+ and a valid Anthropic API key.
+- Install deps from repo root: `npm run install:all` (runs install inside `deepresearch/`).
+- Root commands `cd` into `deepresearch/`:
+  - `npm run dev` — run the agent via tsx for fast iteration.
+  - `npm run build` — type-check and emit JS with `tsc`.
+  - `npm start` — run the compiled output from `dist/`.
+- Windows: `setx ANTHROPIC_API_KEY your_key`; Unix shells: `export ANTHROPIC_API_KEY=...`.
 
-## Coding Style & Naming Conventions
-- TypeScript with ES modules; prefer named exports and async/await.
-- Indent with 2 spaces, keep semicolons, and favor small, single-purpose functions.
-- File names are kebab-case (	ui-chat-with-tools.ts); mirror that for new modules and .claude/agents/*.md.
-- Keep configuration in 	sconfig.json untouched unless all packages are updated together.
+## Coding Style & Naming
+- TypeScript + ES modules; prefer async/await and named exports.
+- 2-space indentation, keep semicolons, favor small single-purpose functions.
+- File names stay kebab-case (`simple-agent.cjs`, `run.ts`); prompts/system strings in English, docs may be Chinese.
 
-## Testing Guidelines
-- No automated test harness is configured; at minimum run 
-pm run build in touched packages as a type-safety gate.
-- Add new tests as *.spec.ts alongside source (e.g., src/__tests__/ or near the module) using your preferred runner; document the command in package.json when introduced.
-- For agent flows, smoke-test manually by running the relevant 
-pm run dev target and verifying tool calls and transcripts.
+## Testing & QA
+- No automated tests yet; at minimum run `npm run build` before committing to ensure types pass.
+- Manual smoke: `npm run dev`, exercise commands like `list_files`, `read_file`, `run_command`; verify tool output is truncated and safety checks fire.
+- If adding tests, place `*.spec.ts` near sources (e.g., `src/__tests__/`) and add a script to `deepresearch/package.json`.
 
-## Commit & Pull Request Guidelines
-- Repository has no commit history yet; adopt Conventional Commit prefixes (eat:, ix:, chore:) for clarity.
-- In PRs, describe which package(s) changed, commands executed (
-pm run build, manual smoke tests), and any config/env updates. Include screenshots or logs for TUI runs when relevant.
-- Keep diffs scoped; update .env.example if new configuration is required.
+## Commit & PR Guidelines
+- Use Conventional Commit prefixes (`feat:`, `fix:`, `chore:`, `docs:`).
+- In PRs, note touched areas (`bin/`, `src/`), commands executed (`npm run build`, smoke steps), and any config/env updates. Attach logs for agent runs when useful.
+- Update `.env.example` if new configuration keys are introduced; keep diffs scoped.

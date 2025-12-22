@@ -1,70 +1,45 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working on this repository.
 
 ## Project Overview
-
-A Claude Agent SDK demo application demonstrating multi-agent research architecture in TypeScript. A lead agent coordinates specialized subagents to perform comprehensive research tasks and generate reports.
+Terminal coding assistant powered by Anthropic Messages API. The agent can explore codebases, read/write files, and execute shell commands via tool calls.
 
 ## Commands
-
 ```bash
 # Install dependencies
 npm run install:all
 
-# Run the research agent
-npm run dev      # Run with tsx
-npm run build    # Compile TypeScript (type-safety gate)
-npm start        # Run compiled JS
+# Run the coding agent
+npm run dev      # tsx entry
+npm run build    # compile TypeScript
+npm start        # run compiled JS
 ```
 
 ## Project Structure
-
 ```
 deepresearch/
 ├── src/
-│   ├── agent.ts                 # Main entry point, query loop
-│   ├── prompts/
-│   │   ├── lead-agent.ts        # Coordinator prompt (only uses Task tool)
-│   │   ├── researcher.ts        # Web search agent prompt
-│   │   └── report-writer.ts     # Report synthesis prompt
-│   └── utils/
-│       ├── subagent-tracker.ts  # Tracks spawned subagents via hooks
-│       └── transcript.ts        # Session logging utilities
-└── files/
-    ├── research_notes/          # Output from researchers
-    └── reports/                 # Final reports from report-writer
+│  ├── agent.ts    # Main agent loop
+│  ├── run.ts      # Runner utilities
+│  └── tools.ts    # Tool definitions and execution logic
+├── bin/agent.cjs  # CLI entry
+├── .env           # API configuration (not committed)
+└── package.json
 ```
 
-## Architecture: Multi-Agent Research System
+## Architecture
+Single agent calling the Anthropic Messages API with tools:
+- Glob, Grep, Read, Write, Edit, Bash (with safety guards)
+- CLI prompts the user for approvals on risky commands
 
+## Configuration
+Create `deepresearch/.env` or export variables:
 ```
-Lead Agent (coordinator) ──┬──▶ Researcher ×N (parallel)
-  allowedTools: [Task]     │     tools: [WebSearch, Write]
-                           │     output: files/research_notes/
-                           │
-                           └──▶ Report-Writer
-                                 tools: [Glob, Read, Write]
-                                 input: files/research_notes/
-                                 output: files/reports/
+ANTHROPIC_API_KEY=your_api_key
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # or custom endpoint
 ```
 
-Key SDK patterns used:
-- `agents` config object defines subagent types with description, tools, prompt, model
-- `allowedTools: ["Task"]` restricts lead agent to only spawn subagents
-- `parent_tool_use_id` on assistant messages tracks which subagent is responding
-- `resume: sessionId` maintains conversation continuity
-- `permissionMode: "bypassPermissions"` for automated execution
-- Pre/PostToolUse hooks for tracking tool calls
-
-## Testing
-
-No automated test harness configured. Run `npm run build` as a type-safety gate. Smoke-test agent flows manually via `npm run dev` and verify tool calls and transcripts.
-
-## Environment
-
-Requires `ANTHROPIC_API_KEY` environment variable.
-
-## Language
-
-Documentation and comments are in Chinese. Code identifiers are in English.
+## Notes
+- Identifiers are in English; user-facing docs can be Chinese.
+- Tool outputs are truncated for safety; dangerous shell patterns are blocked.

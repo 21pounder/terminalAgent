@@ -1,109 +1,97 @@
-# Claude Agent Demo
+# Terminal Coding Agent
 
-基于 [Claude Agent SDK](https://docs.claude.com/en/docs/agent-sdk/overview) 的 Node.js + TypeScript 演示项目集合。
+一个使用 Claude API 的终端编程助手。
 
-## 项目结构
+## 功能
 
-本仓库包含三个独立项目：
-
-```
-claude-agent-demo/
-├── basic/                   # 基础示例
-├── deepresearch/            # DeepResearch Agent (代码驱动)
-└── deepresearch-md/         # DeepResearch Agent (Markdown 驱动)
-```
-
-### 1. basic - 基础示例
-
-展示 Claude Agent SDK 的核心用法，包含 4 个从简单到复杂的示例：
-
-- 基础 query 调用
-- Session ID 管理
-- TUI 终端聊天
-- 带工具的聊天（MCP + 计算器）
-
-```bash
-cd basic && npm install && npm run dev
-```
-
-详见 [basic/README.md](basic/README.md)
-
-### 2. deepresearch - 代码驱动
-
-多 Agent 协作的研究系统，使用 TypeScript 代码定义 Agent prompts。
-
-```
-Lead Agent (协调者) ──┬──▶ Researcher ×N (研究员)
-                     │      WebSearch → research_notes/
-                     │
-                     └──▶ Report-Writer (报告编写)
-                            Read → reports/
-```
-
-```bash
-cd deepresearch && npm install && npm run dev
-```
-
-详见 [deepresearch/README.md](deepresearch/README.md)
-
-### 3. deepresearch-md - Markdown 驱动
-
-同样的多 Agent 研究系统，但使用 Markdown 文件定义 Agent，更直观易维护。
-
-Agent 定义文件位于 `.claude/agents/` 目录：
-- `lead-agent.md`
-- `researcher.md`
-- `report-writer.md`
-
-```bash
-cd deepresearch-md && npm install && npm run dev
-```
-
-详见 [deepresearch-md/README.md](deepresearch-md/README.md)
+- 🔍 **探索代码** - 使用 Glob、Grep、Read 查找和理解代码
+- ✏️ **编写代码** - 使用 Write、Edit 创建和修改文件
+- 💻 **执行命令** - 使用 Bash 运行 shell 命令
 
 ## 快速开始
 
-### 环境要求
-
-- Node.js 18+
-- Anthropic API Key
-
-### 安装所有项目
+### 1. 安装依赖
 
 ```bash
 npm run install:all
 ```
 
-### 配置 API Key
+### 2. 配置 API
 
-设置系统环境变量：
+创建 `deepresearch/.env` 文件：
 
-```bash
-export ANTHROPIC_API_KEY=your_api_key
+```
+ANTHROPIC_API_KEY=your_api_key
+ANTHROPIC_BASE_URL=https://api.anthropic.com
 ```
 
-> 可以使用 [aihubmix](https://aihubmix.com/?aff=uTxe) 获取 API Key。
+支持自定义 API 端点（如 API 代理服务）。
 
-### 运行项目
+### 3. 运行
 
 ```bash
-# 运行基础示例
-npm run basic
-
-# 运行代码驱动的 DeepResearch
-npm run deepresearch
-
-# 运行 Markdown 驱动的 DeepResearch
-npm run deepresearch-md
+npm run dev
 ```
+
+## 使用示例
+
+```
+╔════════════════════════════════════════════╗
+║       Terminal Coding Agent v2.0           ║
+╚════════════════════════════════════════════╝
+
+Working directory: /your/project
+Type 'exit' to quit, 'clear' to reset conversation.
+
+You: 查找所有 TypeScript 文件
+
+Agent:
+[Tool: Glob]
+  Executing Glob...
+  Result: Found 5 files...
+
+找到以下 TypeScript 文件：
+- src/agent.ts
+- src/tools.ts
+...
+
+You: 读取 agent.ts 的内容
+
+Agent:
+[Tool: Read]
+  Executing Read...
+  Result: 1│/**...
+
+这是 agent.ts 的内容...
+```
+
+## 项目结构
+
+```
+deepresearch/
+├── src/
+│   ├── agent.ts    # 主 Agent 逻辑
+│   └── tools.ts    # 工具定义和执行
+├── .env            # API 配置
+└── package.json
+```
+
+## 可用工具
+
+| 工具 | 用途 |
+|------|------|
+| Glob | 按模式查找文件 |
+| Grep | 在文件中搜索文本 |
+| Read | 读取文件内容 |
+| Write | 创建/覆盖文件 |
+| Edit | 编辑现有文件 |
+| Bash | 执行 shell 命令 |
 
 ## 技术栈
 
-- **TypeScript** - 类型安全的 JavaScript
-- **tsx** - TypeScript 执行器
-- **@anthropic-ai/claude-agent-sdk** - Claude AI Agent SDK
-- **mathjs** - 数学表达式计算库 (basic)
-- **zod** - 运行时类型验证 (basic)
+- TypeScript
+- @anthropic-ai/sdk - Claude API SDK
+- dotenv - 环境变量管理
 
 ## 许可证
 

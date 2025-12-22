@@ -1,8 +1,13 @@
 {
-  "name": "claude-agent-deepresearch",
-  "version": "1.0.0",
+  "name": "terminal-coding-agent",
+  "version": "2.0.0",
+  "description": "Multi-agent terminal coding assistant powered by Claude",
   "type": "module",
   "main": "dist/agent.js",
+  "bin": {
+    "agent": "./bin/agent.cjs",
+    "coding-agent": "./bin/agent.cjs"
+  },
   "scripts": {
     "dev": "tsx src/agent.ts",
     "build": "tsc",
@@ -14,6 +19,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.65"
+    "@anthropic-ai/claude-agent-sdk": "^0.1.65",
+    "@anthropic-ai/sdk": "^0.71.2",
+    "dotenv": "^17.2.3"
   }
 }

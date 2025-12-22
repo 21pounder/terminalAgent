@@ -1,150 +1,300 @@
 /**
- * Research Agent - TypeScript 实现
+ * Terminal Coding Agent - 使用 raw HTTPS 调用 API
  *
- * 一个多 Agent 研究系统，协调专业化的 subagent 来完成
- * 综合性的研究任务并生成报告。
- *
- * 架构：
- * - Lead Agent（协调者）：协调研究任务，生成 subagent
- * - Researcher（研究员）：搜索网络并保存研究笔记
- * - Report Writer（报告编写）：将研究笔记综合成正式报告
+ * 由于 SDK 被代理阻止，使用原生 HTTPS 模块
  */
 
 import * as readline from "node:readline";
-import * as path from "node:path";
 import * as fs from "node:fs";
-import { query, type Query, type SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
+import * as path from "node:path";
+import * as https from "node:https";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import "dotenv/config";
 
-import { leadAgentPrompt } from "./prompts/lead-agent";
-import { researcherPrompt } from "./prompts/researcher";
-import { reportWriterPrompt } from "./prompts/report-writer";
-import { SubagentTracker } from "./utils/subagent-tracker";
-import { setupSession, TranscriptWriter } from "./utils/transcript";
+const execAsync = promisify(exec);
 
-// 当前 agent 的基础目录
-const BASE_DIR = path.dirname(new URL(import.meta.url).pathname);
+const API_KEY = process.env.ANTHROPIC_API_KEY || "";
+const BASE_URL = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+const MODEL = "claude-3-5-sonnet-20241022";
+const MAX_TOKENS = 1000;
+const WORKING_DIR = process.cwd();
 
-/**
- * 处理 assistant 消息并写入 transcript。
- */
-function processAssistantMessage(
-  msg: SDKAssistantMessage,
-  tracker: SubagentTracker,
-  transcript: TranscriptWriter
-): void {
-  // 使用消息中的 parent_tool_use_id 更新 tracker 上下文
-  const parentId = msg.parent_tool_use_id;
-  tracker.setCurrentContext(parentId ?? undefined);
+const SYSTEM_PROMPT = 'Coding assistant. XML: <read_file><path>f</path></read_file> read, <write_file><path>f</path><content>c</content></write_file> write, <run_command><command>c</command></run_command> run, <list_files><pattern>p</pattern></list_files> list. Dir: ' + WORKING_DIR;
 
-  for (const block of msg.message.content) {
-    if (block.type === "text" && block.text) {
-      transcript.write(block.text, "");
-    } else if (block.type === "tool_use" && block.name === "Task") {
-      console.log("\n[DEBUG] Detected Task tool use block:", block);
-      // 仅处理 Task 工具（subagent 生成）
-      const input = block.input || {};
-      const subagentType = String(input.subagent_type || "unknown");
-      const description = String(input.description || "no description");
-      const prompt = String(input.prompt || "");
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+}
 
-      // 向 tracker 注册并获取 subagent ID
-      const subagentId = tracker.registerSubagentSpawn(
-        block.id || "",
-        subagentType,
-        description,
-        prompt
-      );
+interface APIResponse {
+  content: Array<{ type: string; text?: string }>;
+  stop_reason: string;
+}
 
-      // 面向用户的输出，包含 subagent ID
-      transcript.write(`\n\n[🚀 Spawning ${subagentId}: ${description}]\n`, "");
+// 调用 API
+async function callAPI(messages: Message[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: SYSTEM_PROMPT,
+      messages: messages,
+    });
+
+    const req = https.request({
+      hostname: "api.vectorengine.ai",
+      path: "/v1/messages",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+    }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => (body += chunk));
+      res.on("end", () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`API Error ${res.statusCode}: ${body}`));
+          return;
+        }
+        try {
+          const response: APIResponse = JSON.parse(body);
+          const text = response.content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text || "")
+            .join("");
+          resolve(text);
+        } catch (e) {
+          reject(new Error(`Parse error: ${body}`));
+        }
+      });
+    });
+
+    req.on("error", (e) => reject(e));
+    req.write(data);
+    req.end();
+  });
+}
+
+// 解析和执行命令
+async function parseAndExecuteCommands(text: string): Promise<string[]> {
+  const results: string[] = [];
+
+  // Read file
+  const readMatches = text.matchAll(/<read_file>\s*<path>(.*?)<\/path>\s*<\/read_file>/gs);
+  for (const match of readMatches) {
+    const filePath = match[1].trim();
+    results.push(await executeRead(filePath));
+  }
+
+  // Write file
+  const writeMatches = text.matchAll(/<write_file>\s*<path>(.*?)<\/path>\s*<content>(.*?)<\/content>\s*<\/write_file>/gs);
+  for (const match of writeMatches) {
+    const filePath = match[1].trim();
+    const content = match[2];
+    results.push(await executeWrite(filePath, content));
+  }
+
+  // Run command
+  const cmdMatches = text.matchAll(/<run_command>\s*<command>(.*?)<\/command>\s*<\/run_command>/gs);
+  for (const match of cmdMatches) {
+    const command = match[1].trim();
+    results.push(await executeCommand(command));
+  }
+
+  // List files
+  const listMatches = text.matchAll(/<list_files>\s*<pattern>(.*?)<\/pattern>\s*<\/list_files>/gs);
+  for (const match of listMatches) {
+    const pattern = match[1].trim();
+    results.push(await executeList(pattern));
+  }
+
+  // Search
+  const searchMatches = text.matchAll(/<search>\s*<pattern>(.*?)<\/pattern>\s*<path>(.*?)<\/path>\s*<\/search>/gs);
+  for (const match of searchMatches) {
+    const pattern = match[1].trim();
+    const searchPath = match[2].trim();
+    results.push(await executeSearch(pattern, searchPath));
+  }
+
+  return results;
+}
+
+async function executeRead(filePath: string): Promise<string> {
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(WORKING_DIR, filePath);
+  try {
+    if (!fs.existsSync(fullPath)) {
+      return `[read_file] Error: File not found: ${filePath}`;
     }
+    const content = fs.readFileSync(fullPath, "utf-8");
+    const lines = content.split('\n').map((l, i) => `${i + 1}│${l}`).join('\n');
+    return `[read_file: ${filePath}]\n${lines}`;
+  } catch (e) {
+    return `[read_file] Error: ${e instanceof Error ? e.message : e}`;
   }
 }
 
-/**
- * 启动与 research agent 的交互式对话。
- */
-export async function chat(): Promise<void> {
-  // 首先检查 API 密钥，在创建任何文件之前
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log("\nError: ANTHROPIC_API_KEY not found.");
-    console.log("Set it in a .env file or export it in your shell.");
-    console.log("Get your key at: https://console.anthropic.com/settings/keys\n");
+async function executeWrite(filePath: string, content: string): Promise<string> {
+  const fullPath = path.isAbsolute(filePath) ? filePath : path.join(WORKING_DIR, filePath);
+  try {
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    const cleanContent = content.replace(/^\n/, '');
+    fs.writeFileSync(fullPath, cleanContent, "utf-8");
+    return `[write_file] Successfully wrote to ${filePath} (${cleanContent.length} chars)`;
+  } catch (e) {
+    return `[write_file] Error: ${e instanceof Error ? e.message : e}`;
+  }
+}
+
+async function executeCommand(command: string): Promise<string> {
+  // 安全检查
+  const dangerous = [/rm\s+-rf\s+[\/~]/, /rm\s+-rf\s+\*/, /mkfs\./, /dd\s+if=/];
+  for (const pattern of dangerous) {
+    if (pattern.test(command)) {
+      return `[run_command] Blocked: Dangerous command`;
+    }
+  }
+
+  try {
+    const { stdout, stderr } = await execAsync(command, {
+      cwd: WORKING_DIR,
+      timeout: 30000,
+      maxBuffer: 1024 * 1024
+    });
+    let result = `[run_command: ${command}]\n`;
+    if (stdout.trim()) result += stdout.trim();
+    if (stderr.trim()) result += `\nSTDERR: ${stderr.trim()}`;
+    return result || `[run_command] Completed (no output)`;
+  } catch (e) {
+    const err = e as { message: string; stdout?: string; stderr?: string };
+    return `[run_command] Error: ${err.message}`;
+  }
+}
+
+async function executeList(pattern: string): Promise<string> {
+  try {
+    let cmd: string;
+    let cwd = WORKING_DIR;
+
+    if (process.platform === "win32") {
+      // Windows: handle patterns like "src/**/*.ts" or "src/*.ts" or "*.ts"
+      let filePattern = pattern;
+
+      // Extract directory prefix if present
+      const pathMatch = pattern.match(/^([^*]+)[\\/]/);
+      if (pathMatch) {
+        const dir = pathMatch[1].replace(/\//g, '\\');
+        const fullDir = path.join(WORKING_DIR, dir);
+        if (fs.existsSync(fullDir)) {
+          cwd = fullDir;
+        }
+        filePattern = pattern.substring(pathMatch[0].length);
+      }
+
+      // Remove ** and keep just the file pattern
+      filePattern = filePattern.replace(/^\*\*[\\/]?/, '');
+      if (!filePattern) filePattern = '*.*';
+
+      cmd = `dir /s /b "${filePattern}" 2>nul`;
+    } else {
+      // Unix: handle path-based patterns properly
+      if (pattern.includes('/')) {
+        cmd = `find . -path "./${pattern}" -type f 2>/dev/null | head -50`;
+      } else {
+        cmd = `find . -name "${pattern}" -type f 2>/dev/null | head -50`;
+      }
+    }
+
+    const { stdout } = await execAsync(cmd, { cwd });
+    const files = stdout.trim().split('\n').filter(Boolean);
+    return `[list_files: ${pattern}]\n${files.length > 0 ? files.join('\n') : 'No files found'}`;
+  } catch {
+    return `[list_files] No files found matching: ${pattern}`;
+  }
+}
+
+async function executeSearch(pattern: string, searchPath: string): Promise<string> {
+  try {
+    const cmd = process.platform === "win32"
+      ? `findstr /s /n "${pattern}" "${searchPath}\\*.*" 2>nul`
+      : `grep -rn "${pattern}" ${searchPath} 2>/dev/null | head -30`;
+    const { stdout } = await execAsync(cmd, { cwd: WORKING_DIR });
+    return `[search: "${pattern}" in ${searchPath}]\n${stdout.trim() || 'No matches'}`;
+  } catch {
+    return `[search] No matches found for: ${pattern}`;
+  }
+}
+
+function hasCommands(text: string): boolean {
+  return /<(read_file|write_file|run_command|list_files|search)>/.test(text);
+}
+
+class CodingAgent {
+  private messages: Message[] = [];
+
+  async chat(userMessage: string): Promise<void> {
+    this.messages.push({ role: "user", content: userMessage });
+
+    let iterations = 0;
+    const maxIterations = 10;
+
+    while (iterations < maxIterations) {
+      iterations++;
+
+      const text = await callAPI(this.messages);
+
+      // 显示响应
+      process.stdout.write(text);
+
+      this.messages.push({ role: "assistant", content: text });
+
+      // 检查是否有命令需要执行
+      if (!hasCommands(text)) {
+        break;
+      }
+
+      // 执行命令
+      console.log("\n");
+      const results = await parseAndExecuteCommands(text);
+
+      if (results.length === 0) {
+        break;
+      }
+
+      // 显示结果
+      for (const result of results) {
+        console.log(result.slice(0, 500) + (result.length > 500 ? '...' : ''));
+        console.log();
+      }
+
+      // 将结果添加到对话
+      const resultText = results.join("\n\n");
+      this.messages.push({ role: "user", content: `Command results:\n\n${resultText}` });
+    }
+  }
+
+  clearHistory(): void {
+    this.messages = [];
+  }
+}
+
+async function main(): Promise<void> {
+  if (!API_KEY) {
+    console.log("\nError: ANTHROPIC_API_KEY not found in .env\n");
     return;
   }
 
-  // 设置会话目录和 transcript
-  const [transcriptFile, sessionDir] = setupSession(BASE_DIR);
+  const agent = new CodingAgent();
 
-  // 创建 transcript 写入器
-  const transcript = new TranscriptWriter(transcriptFile);
+  console.log("\n╔════════════════════════════════════════════╗");
+  console.log("║       Terminal Coding Agent v2.2           ║");
+  console.log("╚════════════════════════════════════════════╝");
+  console.log("\nCommands: read_file, write_file, run_command, list_files, search");
+  console.log(`Working directory: ${WORKING_DIR}`);
+  console.log("Type 'exit' to quit, 'clear' to reset.\n");
 
-  // 确保输出目录存在
-  const researchNotesDir = path.join(BASE_DIR, "files", "research_notes");
-  const reportsDir = path.join(BASE_DIR, "files", "reports");
-  fs.mkdirSync(researchNotesDir, { recursive: true });
-  fs.mkdirSync(reportsDir, { recursive: true });
-
-  // 使用 transcript 写入器和会话目录初始化 subagent tracker
-  const tracker = new SubagentTracker(transcript, sessionDir);
-
-  // 定义专业化的 subagent
-  const agents = {
-    researcher: {
-      description:
-        "Use this agent when you need to gather research information on any topic. " +
-        "The researcher uses web search to find relevant information, articles, and sources " +
-        "from across the internet. Writes research findings to files/research_notes/ " +
-        "for later use by report writers. Ideal for complex research tasks " +
-        "that require deep searching and cross-referencing.",
-      tools: ["WebSearch", "Write"],
-      prompt: researcherPrompt,
-      model: "haiku" as const,
-    },
-    "report-writer": {
-      description:
-        "Use this agent when you need to create a formal research report document. " +
-        "The report-writer reads research findings from files/research_notes/ and synthesizes " +
-        "them into clear, concise, professionally formatted reports in files/reports/. " +
-        "Ideal for creating structured documents with proper citations and organization. " +
-        "Does NOT conduct web searches - only reads existing research notes and creates reports.",
-      tools: ["Skill", "Write", "Glob", "Read"],
-      prompt: reportWriterPrompt,
-      model: "haiku" as const,
-    },
-  };
-
-  // 设置用于追踪的 hooks
-  const hooks = {
-    PreToolUse: [
-      {
-        matcher: undefined, // 匹配所有工具
-        hooks: [tracker.preToolUseHook],
-      },
-    ],
-    PostToolUse: [
-      {
-        matcher: undefined, // 匹配所有工具
-        hooks: [tracker.postToolUseHook],
-      },
-    ],
-  };
-
-  console.log("\n=== Research Agent ===");
-  console.log(
-    "Ask me to research any topic, gather information, or analyze documents."
-  );
-  console.log(
-    "I can delegate complex tasks to specialized researcher and report-writer agents."
-  );
-  console.log(`\nRegistered subagents: ${Object.keys(agents).join(", ")}`);
-  console.log(`Session logs: ${sessionDir}`);
-  console.log("Type 'exit' or 'quit' to end.\n");
-
-  // 用于会话连续性的 Session ID
-  let sessionId: string | undefined;
-
-  // 创建 readline 接口
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -152,75 +302,34 @@ export async function chat(): Promise<void> {
 
   const askQuestion = (): Promise<string> => {
     return new Promise((resolve) => {
-      rl.question("\nYou: ", (answer) => {
-        resolve(answer.trim());
-      });
+      rl.question("\nYou: ", (answer) => resolve(answer.trim()));
     });
   };
 
   try {
     while (true) {
-      // 获取用户输入
-      let userInput: string;
+      const input = await askQuestion();
+
+      if (!input) continue;
+      if (["exit", "quit", "q"].includes(input.toLowerCase())) break;
+      if (input.toLowerCase() === "clear") {
+        agent.clearHistory();
+        console.log("Cleared.");
+        continue;
+      }
+
+      console.log("\nAgent: ");
       try {
-        userInput = await askQuestion();
-      } catch {
-        break;
+        await agent.chat(input);
+        console.log();
+      } catch (error) {
+        console.error("\nError:", error instanceof Error ? error.message : error);
       }
-
-      if (!userInput || ["exit", "quit", "q"].includes(userInput.toLowerCase())) {
-        break;
-      }
-
-      // 将用户输入写入 transcript（仅写入文件，不输出到控制台）
-      transcript.writeToFile(`\nYou: ${userInput}\n`);
-
-      // 发送给 agent
-      const result: Query = query({
-        prompt: userInput,
-        options: {
-          resume: sessionId,
-          permissionMode: "bypassPermissions",
-          systemPrompt: leadAgentPrompt,
-          allowedTools: ["Task"],
-          agents,
-          hooks,
-          model: "haiku",
-        },
-      });
-
-      transcript.write("\nAgent: ", "");
-
-      // 流式处理响应
-      for await (const msg of result) {
-        switch (msg.type) {
-          case "system":
-            if (msg.subtype === "init") {
-              sessionId = msg.session_id;
-            }
-            break;
-          case "assistant":
-            processAssistantMessage(
-              msg,
-              tracker,
-              transcript
-            );
-            break;
-        }
-      }
-
-      transcript.write("\n", "");
     }
   } finally {
-    transcript.write("\n\nGoodbye!\n", "");
-    transcript.close();
-    tracker.close();
     rl.close();
-    console.log(`\nSession logs saved to: ${sessionDir}`);
-    console.log(`  - Transcript: ${transcriptFile}`);
-    console.log(`  - Tool calls: ${path.join(sessionDir, "tool_calls.jsonl")}`);
+    console.log("\nGoodbye!");
   }
 }
 
-// 作为主模块运行
-chat().catch(console.error);
+main().catch(console.error);
