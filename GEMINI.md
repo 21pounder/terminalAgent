@@ -5,30 +5,49 @@ This document provides context for the Gemini AI agent to understand and interac
 ## Project Overview
 
 **Name:** Terminal Coding Agent
-**Version:** 2.2
-**Purpose:** A CLI-based coding assistant that brings the power of Claude 3.5 Sonnet directly into the terminal. It can explore codebases, read/write files, and execute shell commands to assist with software engineering tasks.
+**Version:** 4.1.0
+**Purpose:** A comprehensive CLI-based coding assistant that leverages Claude 3.5 Sonnet to perform software engineering tasks. It features a dual-mode interface: specific "Skills" (Slash Commands) for targeted tasks and an autonomous "Agent" for complex problem-solving.
 **Core Technology:**
-*   **Runtime:** Node.js (TypeScript source, CommonJS distribution).
-*   **AI Model:** Claude 3.5 Sonnet (via `api.vectorengine.ai` proxy).
-*   **Tooling:** Custom XML-based tool calling protocol (bypassing standard SDK tool definitions).
+*   **Runtime:** Node.js (TypeScript source, CommonJS/ESM hybrid distribution).
+*   **AI Model:** Claude 3.5 Sonnet (via `api.vectorengine.ai` proxy or direct Anthropic API).
+*   **Architecture:** Modular design separating High-level Skills, Autonomous Agent Loop, Low-level Tools, and LLM Client.
 
 ## Architecture & Design
 
-The project deviates from standard Anthropic SDK usage to accommodate specific proxy requirements and control mechanisms.
+The project is structured to support both deterministic command execution and probabilistic agentic reasoning.
 
-*   **Communication:** Uses raw HTTPS requests to `api.vectorengine.ai/v1/messages`.
-*   **Tool Protocol:** The agent outputs XML-like tags (e.g., `<read_file><path>...</path></read_file>`) which are parsed by the client using Regular Expressions.
-    *   *Note:* `src/tools.ts` defines standard SDK tools, but the active CLI (`bin/agent.cjs` and `src/agent.ts`) uses the XML parsing approach instead.
-*   **Safety:** Critical commands (especially shell execution and file writes) require user confirmation via a CLI prompt, unless the `-y` / `--yes` flag is used or "auto-approve" is enabled.
+### Key Components
+
+*   **`src/index.ts`**: The main CLI entry point. It handles input routing, differentiating between Slash Commands (routing to Skills) and natural language (routing to Agent).
+*   **`src/skills/`**: Implements "Skills" - specific capabilities exposed as slash commands (e.g., `/explain`, `/refactor`, `/pr`).
+    *   **Logic**: Each skill encapsulates the workflow: Argument Parsing -> Tool Execution -> LLM Prompting -> Output Formatting.
+*   **`src/agent/`**: Implements the autonomous "Agent" loop.
+    *   **`loop.ts`**: The main "Thought-Action-Observation" loop using Claude's Native Tool Use (Function Calling).
+*   **`src/tools/`**: Low-level primitives (File I/O, Shell, Git, Search). These are used by both Skills and the Agent.
+*   **`src/llm/`**: A custom wrapper around the Anthropic API (`client.ts`) to handle proxy connections (bypassing standard SDK limitations) and normalize Tool Use interactions.
 
 ## Key Files & Directories
 
 *   **`deepresearch/`**: The main package directory.
-    *   **`bin/agent.cjs`**: The production CLI entry point. Contains the full agent implementation in CommonJS.
-    *   **`src/agent.ts`**: The development entry point (`npm run dev`). Written in TypeScript, mirrors the logic of `bin/agent.cjs`.
-    *   **`src/tools.ts`**: Definitions for SDK-style tools (Note: seemingly unused in the main CLI flow, likely for reference or future SDK integration).
-    *   **`src/test-query.cjs`**: Script for testing single-shot queries.
-    *   **`.env`**: Configuration file (must contain `ANTHROPIC_API_KEY`).
+    *   **`src/index.ts`**: CLI Entry point.
+    *   **`src/skills/index.ts`**: Registry for all available skills.
+    *   **`src/agent/prompts.ts`**: System prompts and tool definitions for the Agent.
+    *   **`src/tools/index.ts`**: Exports for low-level tools.
+    *   **`bin/agent.cjs`**: Production CLI binary.
+
+## Usage Modes
+
+The agent supports two primary interaction modes:
+
+1.  **Skill Mode (Slash Commands):**
+    *   Directly invokes a specific skill.
+    *   Example: `/explain src/main.ts` or `/pr --title "Fix bug"`
+    *   Best for: Well-defined tasks like explaining code, creating PRs, or running tests.
+
+2.  **Agent Mode (Natural Language):**
+    *   triggered by typing natural language without a leading slash.
+    *   Example: "Analyze the project structure and suggest improvements."
+    *   Best for: Open-ended exploration, debugging, and complex refactoring.
 
 ## Building and Running
 
@@ -38,7 +57,7 @@ All commands should be run from the `deepresearch/` directory or via the root sc
 Create `deepresearch/.env` with your API key:
 ```env
 ANTHROPIC_API_KEY=your_key_here
-ANTHROPIC_BASE_URL=https://api.anthropic.com # Optional
+ANTHROPIC_BASE_URL=https://api.vectorengine.ai/v1 # Or official endpoint
 ```
 
 ### Commands
@@ -46,31 +65,13 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com # Optional
 | Action | Command (Root) | Command (deepresearch/) | Description |
 | :--- | :--- | :--- | :--- |
 | **Install** | `npm run install:all` | `npm install` | Install dependencies. |
-| **Dev Run** | `npm run dev` | `npm run dev` | Run `src/agent.ts` using `tsx`. |
+| **Dev Run** | `npm run dev` | `npm run dev` | Run `src/index.ts` using `tsx`. |
 | **Build** | `npm run build` | `npm run build` | Compile TypeScript to `dist/`. |
 | **Start** | `npm start` | `npm start` | Run the built agent. |
-| **CLI Usage** | N/A | `node bin/agent.cjs [query]` | Run the production CLI. |
 
 ## Development Conventions
 
-*   **Language:** TypeScript for source code (`src/`), CommonJS for scripts/binaries (`bin/`, `*.cjs`).
-*   **Style:**
-    *   2-space indentation.
-    *   Kebab-case filenames (e.g., `simple-agent.cjs`).
-    *   English identifiers and logs; user-facing docs/prompts may be in Chinese.
-*   **Tool Implementation:** When modifying agent capabilities, ensure changes are reflected in both the XML parsing logic (in `agent.ts`/`agent.cjs`) and the system prompt definition.
-*   **Testing:** Primarily manual testing via `src/test-query.cjs` or running the agent interactively.
-
-## Available Tools (XML Protocol)
-
-The agent uses the following XML tags to invoke tools:
-
-1.  **`<read_file>`**: Reads file content.
-    *   `<path>`: Relative or absolute path.
-2.  **`<write_file>`**: Writes/overwrites file content.
-    *   `<path>`: Destination path.
-    *   `<content>`: File content.
-3.  **`<list_files>`**: Finds files matching a pattern.
-    *   `<pattern>`: Glob or filename pattern.
-4.  **`<run_command>`**: Executes shell commands.
-    *   `<command>`: Shell command (blocked: dangerous commands like `rm -rf`).
+*   **Code Style:** TypeScript, strict types.
+*   **Skills:** When adding a new capability, prefer creating a "Skill" in `src/skills/` if it's a specific workflow, or adding to `src/agent/prompts.ts` if it's a general tool for the autonomous agent.
+*   **LLM Interaction:** Use `src/llm/client.ts` for all API calls to ensure proxy compatibility.
+*   **Tools:** Low-level operations (fs, git, shell) belong in `src/tools/` and should be pure functions where possible.

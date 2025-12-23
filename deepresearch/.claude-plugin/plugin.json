@@ -1,0 +1,7 @@
+{
+  "name": "terminal-coding-agent",
+  "version": "4.0.0",
+  "description": "Terminal coding agent with Claude Agent SDK and Skills support",
+  "author": "Terminal Agent Team",
+  "repository": "https://github.com/your-repo/terminal-agent"
+}
