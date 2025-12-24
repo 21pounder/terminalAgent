@@ -4,92 +4,96 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Terminal Coding Agent is a CLI coding assistant with two modes:
-- **Agent Mode** (default): Custom LLM client with tool use (Glob, Grep, Read, Write, Edit, Bash)
-- **SDK Mode** (`sdk-agent`): Uses Claude Agent SDK, spawns Claude Code subprocess
+Terminal Coding Agent is a CLI-based coding assistant **fully powered by the Claude Agent SDK**. It wraps the SDK's `query()` function with a custom terminal UI featuring:
+- `/` command menu for invoking Skills
+- `@` file browser for attaching files to context
+- Session persistence across queries
+
+The agent spawns Claude Code as a subprocess and cannot run inside Claude Code itself.
 
 ## Commands
 
 ```bash
-# Install dependencies (from repo root)
-npm run install:all
+# From repo root
+npm run install:all    # Install all dependencies
+npm run dev            # Development (tsx src/index.ts)
+npm run build          # TypeScript compilation
+npm start              # Run compiled output
 
-# Development
-npm run dev          # Runs agent mode via tsx
-cd deepresearch && npm run dev:sdk   # SDK mode (must run in regular terminal, not Claude Code)
-
-# Build
-npm run build        # TypeScript compilation
-
-# Test
-cd deepresearch && npm run test:ui   # Test UI components
+# Global CLI (after npm link in deepresearch/)
+agent                  # Interactive mode
+agent "your question"  # Single query
+agent /commit          # Invoke a skill
 ```
-
-**Note**: SDK mode (`sdk-agent`) spawns Claude Code as subprocess - cannot run inside Claude Code itself.
 
 ## Architecture
 
 ```
 deepresearch/
 ├── src/
-│   ├── index.ts           # Main entry - SmartInput + mode routing
-│   ├── sdk-agent.ts       # SDK entry - Claude Agent SDK wrapper
-│   ├── agent/
-│   │   ├── loop.ts        # Agent iteration loop (max 15)
-│   │   └── prompts.ts     # System prompt + tool definitions
-│   ├── skills/            # Slash command workflows
-│   │   ├── types.ts       # Skill interface (name, args, execute)
-│   │   ├── index.ts       # Registry + parseArgs
-│   │   ├── code.ts        # /explain, /review, /refactor
-│   │   ├── git.ts         # /commit, /diff, /pr
-│   │   ├── search.ts      # /find, /grep, /symbol
-│   │   └── run.ts         # /test, /build, /lint
-│   ├── tools/             # Tool implementations
-│   │   ├── file.ts        # readFile, writeFile, editFile
-│   │   ├── search.ts      # glob, grep, findSymbol
-│   │   └── shell.ts       # shell, run
-│   ├── llm/
-│   │   └── client.ts      # Raw HTTPS to config.baseUrl (not Anthropic SDK)
-│   ├── ui/                # Enhanced CLI components
-│   │   ├── theme.ts       # Colors (tiffany blue #81D8D0, yellow #F1C40F)
-│   │   ├── commands.ts    # "/" command picker
-│   │   ├── file-browser.ts # "@" file browser
-│   │   └── smart-input.ts # Main input handler
-│   └── utils/
-│       └── config.ts      # Loads .env, exports config object
-└── bin/
-    ├── agent.cjs          # Global CLI wrapper
-    └── sdk-agent.cjs      # SDK CLI wrapper
+│   ├── index.ts              # Main entry - SDK query loop, session management
+│   └── ui/
+│       ├── index.ts          # UI module exports
+│       ├── theme.ts          # ANSI colors, icons, box drawing helpers
+│       ├── commands.ts       # CommandPicker - "/" command menu
+│       ├── file-browser.ts   # FileBrowser - "@" file selection
+│       └── smart-input.ts    # SmartInput - unified input with triggers
+├── .claude/
+│   └── skills/               # Official format Skills (global)
+│       ├── deep-research/SKILL.md
+│       ├── code-review/SKILL.md
+│       ├── git-commit/SKILL.md
+│       └── ...
+├── bin/agent.cjs             # Global CLI entry (CommonJS wrapper)
+└── dist/                     # Build output
 ```
 
 ## Key Patterns
 
-**Input Routing** (`src/index.ts`):
-- `/` triggers command picker → skill execution
-- `@` triggers file browser → attaches file content to message
-- Other input → agent loop with tools
+**SDK Integration** (`src/index.ts`):
+- Uses `@anthropic-ai/claude-agent-sdk`'s `query()` function
+- Configures: `settingSources`, `additionalDirectories`, `permissionMode: "acceptEdits"`
+- Uses `claude_code` preset for tools and system prompt
+- Streams messages via async iterator
 
-**LLM Client** (`src/llm/client.ts`):
-Uses raw `https.request` to `config.baseUrl` - supports API proxies without Anthropic SDK.
+**Skills Loading**:
+- Global skills: Loaded from `deepresearch/.claude/skills/` via `additionalDirectories`
+- Project skills: Loaded from `<cwd>/.claude/skills/` via `settingSources: ["project"]`
+- Project skills override global skills with same name
 
-**Skill System**:
-Each skill has `name`, `description`, `usage`, `args[]`, `execute(ctx)`. Context provides `cwd`, `llm`, parsed `args`.
+**File Attachment**:
+- When files are attached via `@`, the prompt explicitly instructs Claude to focus only on those files
+- File contents are injected with clear markers: `--- File: path ---`
 
-**UI Components**:
-Use raw mode for keypresses, ASCII icons for alignment (no emojis). Each readline instance is ephemeral to avoid conflicts with raw mode components.
+**UI Components** (`src/ui/`):
+- `SmartInput`: Main input loop, detects `/` and `@` triggers
+- `CommandPicker`: Arrow-key navigable popup for `/` commands
+- `FileBrowser`: Directory navigation + fuzzy search for `@` files
+- All use raw `process.stdin` with `setRawMode(true)` for keyboard handling
 
-## Configuration
+## Skills Format
 
-Create `deepresearch/.env`:
+Skills follow Anthropic's official format in `.claude/skills/<name>/SKILL.md`:
+
+```markdown
+---
+name: skill-name
+description: Brief description
+version: 1.0.0
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+---
+
+# Skill Name
+
+Instructions for Claude...
 ```
-ANTHROPIC_API_KEY=your_key
-ANTHROPIC_BASE_URL=https://api.anthropic.com  # optional proxy
-MODEL=claude-sonnet-4-20250514                 # optional
-```
 
-## Conventions
+## Coding Conventions
 
 - TypeScript ES modules for `src/`, CommonJS for `bin/`
 - 2-space indentation, semicolons
 - Kebab-case filenames
-- Run `npm run build` to verify types before commit
+- Run `npm run build` before committing to verify types

@@ -1,13 +1,13 @@
 ---
 name: deep-research
-description: This skill should be used when the user asks to "research a topic", "investigate thoroughly", "deep dive into", "find comprehensive information about", or needs multi-source analysis with citations and synthesis.
+description: Use this skill when user asks to "research a topic", "investigate thoroughly", "deep dive into", "analyze in depth", or needs comprehensive multi-source research with citations.
 version: 1.0.0
 allowed-tools: [Read, Glob, Grep, WebFetch, WebSearch]
 ---
 
-# Deep Research Skill
+# Deep Research
 
-Conduct comprehensive research on a topic using web search, document analysis, and synthesis.
+Conduct comprehensive research on any topic using multiple sources, providing structured analysis with citations.
 
 ## Parameters
 
@@ -37,41 +37,46 @@ Conduct comprehensive research on a topic using web search, document analysis, a
 
 ## When to Use
 
-- User asks for in-depth research on a subject
-- Task requires consulting multiple sources
-- Need to synthesize information from various origins
-- Require citations and source verification
+- User asks to "research" or "investigate" a topic
+- User wants a "deep dive" or "comprehensive analysis"
+- User needs information from multiple sources
+- User asks for comparisons with evidence
+- User wants citations and references
 
 ## Methodology
 
-### Phase 1: Understanding the Query
-- Parse the user's research question
-- Identify key concepts, entities, and relationships
-- Determine the scope and depth required
+### Phase 1: Query Analysis
+- Parse the research question
+- Identify key concepts and search terms
+- Determine scope and boundaries
+- Plan search strategy
 
 ### Phase 2: Information Gathering
-1. **Web Search**: Use multiple search queries to find relevant sources
-2. **Source Evaluation**: Assess credibility and relevance of each source
-3. **Content Extraction**: Extract key facts, data, and insights
+1. **Web Search**: Execute multiple targeted searches
+2. **Source Evaluation**: Assess credibility and relevance
+3. **Content Extraction**: Extract key facts and data
+4. **Local Files**: Check if relevant local documents exist
 
-### Phase 3: Analysis
-- Cross-reference information from multiple sources
-- Identify patterns, contradictions, and gaps
-- Synthesize findings into coherent understanding
+### Phase 3: Synthesis
+- Cross-reference information across sources
+- Identify patterns, trends, and contradictions
+- Distinguish facts from opinions
+- Fill information gaps with additional searches
 
 ### Phase 4: Output
-Provide a structured research report with:
-- Executive summary
-- Key findings (with citations)
+Provide structured report with:
+- Executive summary (2-3 sentences)
+- Key findings with inline citations
 - Analysis and insights
-- Limitations and areas for further research
+- Sources list with URLs
 
 ## Guidelines
 
 - Always cite sources with URLs
-- Distinguish between facts and interpretations
-- Acknowledge uncertainty when present
-- Prioritize recent and authoritative sources
+- Distinguish facts from interpretations
+- Present balanced perspectives on controversial topics
+- Acknowledge limitations and gaps in available information
+- Use the user's language for the report
 
 ## Examples
 
@@ -80,27 +85,19 @@ Provide a structured research report with:
 **User Input**: "Research the current state of WebAssembly adoption in 2024"
 
 **Expected Behavior**:
-1. Search for WebAssembly adoption statistics, use cases, and industry reports
-2. Consult developer surveys, browser support data, and major framework integrations
-3. Synthesize findings into a report covering: current adoption rates, key use cases, major players, challenges, and future outlook
-4. Provide at least 5 cited sources
+1. Search for WebAssembly adoption statistics and trends
+2. Consult browser support data and developer surveys
+3. Find real-world use cases and performance benchmarks
+4. Synthesize findings into structured report
+5. Provide at least 5 cited sources
 
-### Example 2: Competitive Analysis
+### Example 2: Comparison Research
 
-**User Input**: "深度研究 React vs Vue vs Svelte 的优劣势"
-
-**Expected Behavior**:
-1. Research each framework's architecture, performance, ecosystem
-2. Compare based on: learning curve, performance benchmarks, community size, job market
-3. Provide balanced analysis with specific evidence
-4. Include citations from official docs, benchmarks, and surveys
-
-### Example 3: Problem Investigation
-
-**User Input**: "Investigate why Node.js memory leaks happen and how to debug them"
+**User Input**: "深度研究 React vs Vue 的优劣势"
 
 **Expected Behavior**:
-1. Research common causes of memory leaks in Node.js
-2. Gather debugging techniques and tools
-3. Compile real-world case studies and solutions
-4. Output structured guide with examples
+1. 研究每个框架的架构、性能、生态系统
+2. 基于学习曲线、性能、社区支持等维度对比
+3. 提供有证据支持的平衡分析
+4. 包含官方文档、基准测试、开发者调查等引用
+5. 用中文输出完整报告

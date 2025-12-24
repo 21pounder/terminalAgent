@@ -1,21 +1,17 @@
 {
   "name": "terminal-coding-agent",
-  "version": "4.1.0",
-  "description": "Claude Agent SDK 驱动的终端编程助手，支持 Claude Code Skills",
+  "version": "5.0.0",
+  "description": "Terminal coding assistant powered by Claude Agent SDK with official Skills support",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "agent": "./bin/agent.cjs",
-    "coding-agent": "./bin/agent.cjs",
-    "sdk-agent": "./bin/sdk-agent.cjs"
+    "coding-agent": "./bin/agent.cjs"
   },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "dev:sdk": "tsx src/sdk-agent.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "start:sdk": "node dist/sdk-agent.js",
-    "test:skills": "tsx src/test-skills.ts",
     "test:ui": "tsx src/test-ui.ts"
   },
   "devDependencies": {
@@ -25,10 +21,9 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
-    "@anthropic-ai/sdk": "^0.71.2",
     "@inquirer/prompts": "^8.1.0",
-    "dotenv": "^17.2.3",
-    "inquirer-file-selector": "^1.0.1",
-    "zod": "^3.25.76"
+    "cheerio": "^1.1.2",
+    "playwright": "^1.57.0",
+    "turndown": "^7.2.2"
   }
 }

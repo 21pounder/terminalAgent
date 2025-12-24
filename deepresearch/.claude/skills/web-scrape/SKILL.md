@@ -2,7 +2,7 @@
 name: web-scrape
 description: This skill should be used when the user asks to "scrape a website", "extract data from URL", "crawl web pages", "parse HTML", or needs to extract and structure data from web pages.
 version: 1.0.0
-allowed-tools: [WebFetch, Read, Write]
+allowed-tools: [WebFetch, Read, Write, Bash]
 ---
 
 # Web Scraping Skill
