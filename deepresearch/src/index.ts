@@ -9,13 +9,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { query, type SDKMessage, type SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
 
-// 获取 agent 安装目录（用于加载全局 skills）
+// 加载 .env 配置（必须在导入 SDK 之前）
+import dotenv from "dotenv";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const AGENT_ROOT = path.resolve(__dirname, "..");  // deepresearch/
+dotenv.config({ path: path.join(AGENT_ROOT, ".env") });
+
+import { query, type SDKMessage, type SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
 const GLOBAL_SKILLS_DIR = path.join(AGENT_ROOT, ".claude");
+
 import {
   theme,
   icons,
@@ -25,10 +29,17 @@ import {
   Command,
   FileItem,
   showCursor,
+  pickCommand,
 } from "./ui/index.js";
 
 // 版本号
 const VERSION = "5.0.0";
+
+// 权限模式类型
+type PermissionMode = "acceptEdits" | "bypassPermissions";
+
+// 当前权限模式（全局状态）
+let currentPermissionMode: PermissionMode = "acceptEdits";
 
 // 颜色快捷方式
 const colors = {
@@ -141,17 +152,26 @@ async function runQuery(prompt: string, sessionId?: string): Promise<string | un
   console.log();
 
   try {
+    // 用户的实际工作目录
+    const userCwd = process.cwd();
+
     const result = query({
       prompt,
       options: {
-        // 加载项目设置（包括 .claude/skills/）
-        settingSources: ["project", "local"],
+        // 关键：设置 cwd 为 agent 安装目录，这样 Skills 才能被加载
+        cwd: AGENT_ROOT,
 
-        // 添加 agent 安装目录作为额外目录（加载全局 skills）
-        additionalDirectories: fs.existsSync(GLOBAL_SKILLS_DIR) ? [AGENT_ROOT] : [],
+        // 使用环境变量中的 model，默认为 claude-sonnet-4-20250514
+        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+
+        // 加载项目设置（从 AGENT_ROOT/.claude/skills/ 加载 Skills）
+        settingSources: ["project"],
+
+        // 授予用户工作目录的文件访问权限
+        additionalDirectories: [userCwd],
 
         // 自动接受文件编辑
-        permissionMode: "acceptEdits",
+        permissionMode: currentPermissionMode,
 
         // 使用 Claude Code 默认工具集
         tools: { type: "preset", preset: "claude_code" },
@@ -171,6 +191,11 @@ IMPORTANT Language Rules:
 - You MUST respond to the user in the same language they use
 - If the user writes in Chinese, respond in Chinese
 - If the user writes in English, respond in English
+
+IMPORTANT Working Directory:
+- The user is working in: ${userCwd}
+- When reading/writing files, use paths relative to ${userCwd} or absolute paths
+- Skills are loaded from the agent installation directory
 
 Skills in .claude/skills/ are automatically available via the Skill tool.
 Use /skill-name to invoke a skill directly.
@@ -273,6 +298,7 @@ function loadSkillsFromDir(skillsDir: string): Command[] {
 function buildCommandList(): Command[] {
   const builtinCommands: Command[] = [
     { name: "help", description: "Show help" },
+    { name: "mode", description: "Switch permission mode" },
     { name: "clear", description: "New session" },
     { name: "exit", description: "Exit program" },
   ];
@@ -306,6 +332,7 @@ function printHelp(): void {
 
   console.log(fmt("  Commands:", colors.tiffany));
   console.log(fmt(`    /help     `, colors.accent) + fmt("- Show this help", colors.dim));
+  console.log(fmt(`    /mode     `, colors.accent) + fmt("- Switch permission mode", colors.dim));
   console.log(fmt(`    /clear    `, colors.accent) + fmt("- Start new session", colors.dim));
   console.log(fmt(`    /exit     `, colors.accent) + fmt("- Exit program", colors.dim));
   console.log();
@@ -355,6 +382,56 @@ async function handleInput(
     return { continue: true, sessionId: undefined };
   }
 
+  // 切换权限模式
+  if (trimmed === "/mode" || trimmed.startsWith("/mode ")) {
+    const arg = trimmed.slice(6).trim();
+
+    if (arg === "1" || arg.toLowerCase() === "safe") {
+      currentPermissionMode = "acceptEdits";
+      console.log();
+      console.log(fmt(`  ${icons.check} Switched to Safe mode`, colors.success));
+      console.log(fmt(`    Auto-accept file edits, confirm Bash commands`, colors.dim));
+      console.log();
+    } else if (arg === "2" || arg.toLowerCase() === "unsafe") {
+      currentPermissionMode = "bypassPermissions";
+      console.log();
+      console.log(fmt(`  ${icons.check} Switched to Unsafe mode`, colors.success));
+      console.log(fmt(`    Auto-accept everything (no confirmations)`, colors.dim));
+      console.log();
+    } else {
+      // 没有参数，显示交互式选择菜单
+      const modeCommands: Command[] = [
+        {
+          name: "safe",
+          description: currentPermissionMode === "acceptEdits"
+            ? "Auto-accept edits, confirm Bash (current)"
+            : "Auto-accept edits, confirm Bash",
+        },
+        {
+          name: "unsafe",
+          description: currentPermissionMode === "bypassPermissions"
+            ? "Auto-accept everything (current)"
+            : "Auto-accept everything",
+        },
+      ];
+
+      console.log();
+      const result = await pickCommand(modeCommands, "");
+
+      if (!result.cancelled && result.command) {
+        if (result.command.name === "safe") {
+          currentPermissionMode = "acceptEdits";
+          console.log(fmt(`  ${icons.check} Switched to Safe mode`, colors.success));
+        } else if (result.command.name === "unsafe") {
+          currentPermissionMode = "bypassPermissions";
+          console.log(fmt(`  ${icons.check} Switched to Unsafe mode`, colors.success));
+        }
+        console.log();
+      }
+    }
+    return { continue: true, sessionId };
+  }
+
   // 空输入
   if (!trimmed && files.length === 0) {
     return { continue: true, sessionId };
@@ -376,7 +453,7 @@ User request: ${message || "Analyze the attached file(s)"}`.trim();
   }
 
   // 如果是 skill 命令（/skill-name），转换为自然语言请求
-  if (message.startsWith("/") && !message.startsWith("/exit") && !message.startsWith("/help") && !message.startsWith("/clear")) {
+  if (message.startsWith("/") && !message.startsWith("/exit") && !message.startsWith("/help") && !message.startsWith("/clear") && !message.startsWith("/mode")) {
     const skillName = message.split(" ")[0].slice(1);
     const args = message.slice(skillName.length + 2).trim();
     message = `Use the "${skillName}" skill${args ? ` with: ${args}` : ""}`;
