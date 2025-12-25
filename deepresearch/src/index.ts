@@ -1,10 +1,11 @@
 /**
- * Terminal Coding Agent - 完全基于 Claude Agent SDK
+ * Terminal Coding Agent - Multi-Agent Architecture
  *
  * 功能：
  * - "/" 智能指令选择器
  * - "@" 文件浏览器引用
  * - 官方 Skills 系统支持
+ * - Multi-Agent: Coordinator, Reader, Coder, Reviewer
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -32,8 +33,112 @@ import {
   pickCommand,
 } from "./ui/index.js";
 
+import { tracker, messageHandler, Transcript } from "./utils/index.js";
+
 // 版本号
-const VERSION = "5.0.0";
+const VERSION = "6.0.0";
+
+// 子智能体类型
+type SubagentType = "coordinator" | "reader" | "coder" | "reviewer";
+
+// 子智能体配置
+interface SubagentConfig {
+  name: string;
+  description: string;
+  promptFile: string;
+}
+
+const SUBAGENTS: Record<SubagentType, SubagentConfig> = {
+  coordinator: {
+    name: "Coordinator",
+    description: "理解意图，分配任务",
+    promptFile: "coordinator.md",
+  },
+  reader: {
+    name: "Reader",
+    description: "代码阅读和理解",
+    promptFile: "reader.md",
+  },
+  coder: {
+    name: "Coder",
+    description: "代码编写和修改",
+    promptFile: "coder.md",
+  },
+  reviewer: {
+    name: "Reviewer",
+    description: "代码审查和质量检查",
+    promptFile: "reviewer.md",
+  },
+};
+
+// 全局会话记录
+let currentTranscript: Transcript | null = null;
+
+/**
+ * 加载子智能体提示词
+ */
+function loadSubagentPrompt(agentType: SubagentType): string {
+  const config = SUBAGENTS[agentType];
+  const promptPath = path.join(AGENT_ROOT, "src", "prompts", config.promptFile);
+
+  try {
+    if (fs.existsSync(promptPath)) {
+      return fs.readFileSync(promptPath, "utf-8");
+    }
+  } catch {
+    // 忽略读取错误
+  }
+
+  return `You are the ${config.name} agent. ${config.description}.`;
+}
+
+/**
+ * 构建多智能体系统提示词
+ */
+function buildMultiAgentSystemPrompt(userCwd: string): string {
+  const agentDescriptions = Object.entries(SUBAGENTS)
+    .map(([type, config]) => `- ${config.name}: ${config.description}`)
+    .join("\n");
+
+  return `
+IMPORTANT Language Rules:
+- You MUST respond to the user in the same language they use
+- If the user writes in Chinese, respond in Chinese
+- If the user writes in English, respond in English
+
+IMPORTANT Working Directory:
+- The user is working in: ${userCwd}
+- When reading/writing files, use paths relative to ${userCwd} or absolute paths
+- Skills are loaded from the agent installation directory
+
+## Multi-Agent System
+
+You are the Coordinator of a multi-agent coding system. You have access to the following specialized agents:
+
+${agentDescriptions}
+
+### Workflow
+
+For complex tasks, follow this workflow:
+1. Analyze the user's request (Coordinator)
+2. If code understanding is needed, invoke Reader first
+3. For code changes, invoke Coder
+4. For quality checks, invoke Reviewer
+
+### Agent Invocation
+
+To invoke a subagent, use this format in your thinking:
+[DISPATCH:AgentName] Task description
+
+Example:
+[DISPATCH:Reader] Analyze the structure of src/index.ts
+[DISPATCH:Coder] Add error handling to the login function
+[DISPATCH:Reviewer] Check the changes for security issues
+
+Skills in .claude/skills/ are automatically available via the Skill tool.
+Use /skill-name to invoke a skill directly.
+`;
+}
 
 // 权限模式类型
 type PermissionMode = "acceptEdits" | "bypassPermissions";
@@ -113,9 +218,27 @@ function processAssistantMessage(msg: SDKAssistantMessage): void {
   if (Array.isArray(content)) {
     for (const block of content) {
       if (block.type === "text") {
+        // 检测子智能体派发
+        const events = messageHandler.processMessage(msg);
+        for (const event of events) {
+          if (event.type === "subagent_dispatch") {
+            const dispatch = event.content as { targetAgent: string; task: string };
+            console.log(fmt(`  ⤷ [${dispatch.targetAgent}] `, colors.tiffany) + fmt(dispatch.task, colors.dim));
+          }
+        }
         console.log(block.text);
+
+        // 记录到会话日志
+        if (currentTranscript) {
+          currentTranscript.addAssistant(block.text);
+        }
       } else if (block.type === "tool_use") {
         console.log(fmt(`  [${block.name}]`, colors.tiffany));
+
+        // 记录工具调用
+        if (currentTranscript) {
+          currentTranscript.addTool(block.name, block.input);
+        }
       }
     }
   }
@@ -128,13 +251,38 @@ function readAttachedFiles(files: FileItem[]): string {
   if (files.length === 0) return "";
 
   const fileContents: string[] = [];
+  const binaryExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.zip', '.tar', '.gz', '.exe', '.dll', '.so', '.dylib'];
+
   for (const file of files) {
     try {
       const fullPath = path.isAbsolute(file.path)
         ? file.path
         : path.join(process.cwd(), file.path);
-      const content = fs.readFileSync(fullPath, "utf-8");
-      fileContents.push(`--- File: ${file.relativePath} ---\n${content}\n--- End of ${file.relativePath} ---`);
+
+      const ext = path.extname(file.path).toLowerCase();
+
+      if (ext === '.pdf') {
+        // PDF 文件：提示使用 /pdf-analyze skill
+        fileContents.push(`--- File: ${file.relativePath} ---
+[PDF file detected at: ${fullPath}]
+
+NOTE: For PDF analysis, please use the /pdf-analyze skill or extract text using Python:
+\`\`\`python
+import pdfplumber
+with pdfplumber.open("${fullPath.replace(/\\/g, '\\\\')}") as pdf:
+    for page in pdf.pages:
+        print(page.extract_text())
+\`\`\`
+
+Alternatively, run: pdftotext "${fullPath}" -
+--- End of ${file.relativePath} ---`);
+      } else if (binaryExtensions.includes(ext)) {
+        // 二进制文件只传路径，让 Claude 用 Read 工具处理
+        fileContents.push(`--- File: ${file.relativePath} ---\n[Binary file at: ${fullPath}]\nUse the Read tool to access this file.\n--- End of ${file.relativePath} ---`);
+      } else {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        fileContents.push(`--- File: ${file.relativePath} ---\n${content}\n--- End of ${file.relativePath} ---`);
+      }
     } catch (err) {
       fileContents.push(`--- File: ${file.relativePath} ---\n[Error reading file: ${err instanceof Error ? err.message : String(err)}]\n--- End of ${file.relativePath} ---`);
     }
@@ -190,24 +338,11 @@ async function runQuery(prompt: string, sessionId?: string): Promise<string | un
         // 包含流式消息
         includePartialMessages: true,
 
-        // 系统提示词
+        // 系统提示词（Multi-Agent）
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: `
-IMPORTANT Language Rules:
-- You MUST respond to the user in the same language they use
-- If the user writes in Chinese, respond in Chinese
-- If the user writes in English, respond in English
-
-IMPORTANT Working Directory:
-- The user is working in: ${userCwd}
-- When reading/writing files, use paths relative to ${userCwd} or absolute paths
-- Skills are loaded from the agent installation directory
-
-Skills in .claude/skills/ are automatically available via the Skill tool.
-Use /skill-name to invoke a skill directly.
-`,
+          append: buildMultiAgentSystemPrompt(userCwd),
         },
       },
     });
@@ -482,6 +617,11 @@ async function interactive(): Promise<void> {
 
   let sessionId: string | undefined;
 
+  // 初始化会话记录
+  currentTranscript = new Transcript(undefined, path.join(AGENT_ROOT, "data", "logs"));
+  console.log(fmt(`  Transcript: ${currentTranscript.getSessionId()}`, colors.dim));
+  console.log();
+
   try {
     while (true) {
       const commands = buildCommandList();
@@ -494,6 +634,11 @@ async function interactive(): Promise<void> {
 
       if (result.cancelled) {
         break;
+      }
+
+      // 记录用户输入
+      if (currentTranscript && result.value) {
+        currentTranscript.addUser(result.value);
       }
 
       const outcome = await handleInput(result.value, result.files, sessionId);
@@ -509,6 +654,13 @@ async function interactive(): Promise<void> {
       fmt(`\n  ${icons.cross} Fatal: `, colors.error) +
       fmt(error instanceof Error ? error.message : String(error), colors.error)
     );
+  }
+
+  // 保存会话记录
+  if (currentTranscript) {
+    const textPath = currentTranscript.saveAsText();
+    const jsonPath = currentTranscript.saveAsJson();
+    console.log(fmt(`  Saved: ${textPath}`, colors.dim));
   }
 
   console.log();
