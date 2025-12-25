@@ -170,6 +170,14 @@ async function runQuery(prompt: string, sessionId?: string): Promise<string | un
         // 授予用户工作目录的文件访问权限
         additionalDirectories: [userCwd],
 
+        // MCP Servers 配置
+        mcpServers: {
+          playwright: {
+            command: "npx",
+            args: ["-y", "@playwright/mcp@latest"],
+          },
+        },
+
         // 自动接受文件编辑
         permissionMode: currentPermissionMode,
 
