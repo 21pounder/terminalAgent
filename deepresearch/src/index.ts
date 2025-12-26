@@ -77,6 +77,78 @@ let currentTranscript: Transcript | null = null;
 // 子智能体执行深度限制
 const MAX_SUBAGENT_DEPTH = 3;
 
+// Agent 图标映射
+const AGENT_ICONS: Record<SubagentType, string> = {
+  coordinator: "🎯",
+  reader: "📖",
+  coder: "💻",
+  reviewer: "🔍",
+};
+
+/**
+ * 检测任务类型，决定使用哪个 Agent
+ */
+function detectTaskType(prompt: string): SubagentType {
+  const lowerPrompt = prompt.toLowerCase();
+
+  // Skill 命令映射（优先级最高）
+  if (lowerPrompt.includes('use the "code-review" skill') || lowerPrompt.includes("/code-review")) {
+    return "reviewer";
+  }
+  if (lowerPrompt.includes('use the "git-commit" skill') || lowerPrompt.includes("/git-commit")) {
+    return "coder";
+  }
+  if (lowerPrompt.includes('use the "pdf-analyze" skill') || lowerPrompt.includes("/pdf-analyze")) {
+    return "reader";
+  }
+  if (lowerPrompt.includes('use the "debug-complex" skill') || lowerPrompt.includes("/debug-complex")) {
+    return "coordinator"; // 复杂调试需要协调
+  }
+
+  // 使用词边界匹配，避免 "readme" 匹配到 "read"
+  const matchWord = (text: string, word: string): boolean => {
+    const regex = new RegExp(`\\b${word}\\b`, 'i');
+    return regex.test(text);
+  };
+
+  // 关键词检测 - Coder（优先检测，因为写代码更明确）
+  const coderKeywords = [
+    "修改", "添加", "实现", "写", "创建", "修复", "fix", "重构",
+    "add", "implement", "write", "create", "modify", "update", "refactor",
+    "生成", "generate", "make", "build"
+  ];
+  for (const keyword of coderKeywords) {
+    if (matchWord(lowerPrompt, keyword)) {
+      return "coder";
+    }
+  }
+
+  // 关键词检测 - Reviewer
+  const reviewerKeywords = [
+    "审查", "检查", "review", "check", "审核", "bug", "安全",
+    "security", "vulnerability", "issue", "问题"
+  ];
+  for (const keyword of reviewerKeywords) {
+    if (matchWord(lowerPrompt, keyword)) {
+      return "reviewer";
+    }
+  }
+
+  // 关键词检测 - Reader
+  const readerKeywords = [
+    "分析", "阅读", "理解", "解释", "查看", "看看", "了解",
+    "analyze", "read", "understand", "explain", "look", "what is", "how does"
+  ];
+  for (const keyword of readerKeywords) {
+    if (matchWord(lowerPrompt, keyword)) {
+      return "reader";
+    }
+  }
+
+  // 默认使用 Coordinator 处理复杂/不确定的任务
+  return "coordinator";
+}
+
 // 子智能体执行结果
 interface SubagentResult {
   agent: string;
@@ -471,9 +543,164 @@ Alternatively, run: pdftotext "${fullPath}" -
 }
 
 /**
- * 使用 Claude Agent SDK 运行查询（支持 Multi-Agent 调度）
+ * 构建 Agent 专属的 System Prompt
+ */
+function buildAgentSystemPrompt(agentType: SubagentType, userCwd: string): string {
+  const agentPrompt = loadSubagentPrompt(agentType);
+  const config = SUBAGENTS[agentType];
+
+  if (agentType === "coordinator") {
+    // Coordinator 需要多 Agent 协调能力
+    return buildMultiAgentSystemPrompt(userCwd);
+  }
+
+  // 其他 Agent 使用专属 prompt
+  return `${agentPrompt}
+
+IMPORTANT Language Rules:
+- You MUST respond to the user in the same language they use
+- If the user writes in Chinese, respond in Chinese
+- If the user writes in English, respond in English
+
+IMPORTANT Working Directory:
+- The user is working in: ${userCwd}
+- When reading/writing files, use paths relative to ${userCwd} or absolute paths
+
+You are the ${config.name} agent. ${config.description}.
+Focus on your specific task and complete it directly.
+Skills in .claude/skills/ are available via the Skill tool.`;
+}
+
+/**
+ * 使用 Claude Agent SDK 运行指定类型的 Agent
+ */
+async function runAgent(
+  agentType: SubagentType,
+  prompt: string,
+  sessionId?: string
+): Promise<string | undefined> {
+  console.log();
+  console.log(fmt(`  ${icons.sparkle} Processing...`, colors.dim));
+  console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));
+  console.log();
+
+  try {
+    const userCwd = process.cwd();
+    let newSessionId: string | undefined;
+    const config = SUBAGENTS[agentType];
+    const agentIcon = AGENT_ICONS[agentType];
+
+    const result = query({
+      prompt,
+      options: {
+        cwd: AGENT_ROOT,
+        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+        settingSources: ["project"],
+        additionalDirectories: [userCwd],
+        mcpServers: {
+          playwright: {
+            command: "npx",
+            args: ["-y", "@playwright/mcp@latest"],
+          },
+        },
+        permissionMode: currentPermissionMode,
+        tools: { type: "preset", preset: "claude_code" },
+        resume: sessionId,
+        includePartialMessages: true,
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: buildAgentSystemPrompt(agentType, userCwd),
+        },
+      },
+    });
+
+    // 处理流式响应
+    for await (const msg of result) {
+      switch (msg.type) {
+        case "system":
+          if (msg.subtype === "init") {
+            newSessionId = msg.session_id;
+            // 显示当前 Agent 类型和会话 ID
+            console.log(fmt(`  ${agentIcon} ${config.name}`, colors.accent) +
+              fmt(` | Session: ${msg.session_id.slice(0, 8)}`, colors.dim));
+            console.log();
+          }
+          break;
+
+        case "assistant":
+          const content = msg.message.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type === "text") {
+                console.log(block.text);
+
+                if (currentTranscript) {
+                  currentTranscript.addAssistant(block.text);
+                }
+              } else if (block.type === "tool_use") {
+                const toolName = block.name;
+                const toolIcon = getToolIcon(toolName);
+                console.log(fmt(`  ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
+                if (currentTranscript) {
+                  currentTranscript.addTool(block.name, block.input);
+                }
+              }
+            }
+          }
+          break;
+
+        case "result":
+          console.log();
+          if (msg.subtype === "success") {
+            console.log(
+              fmt(`  ${icons.check} `, colors.success) +
+              fmt(`${config.name} done in ${(msg.duration_ms / 1000).toFixed(1)}s`, colors.dim) +
+              fmt(` | $${msg.total_cost_usd.toFixed(4)}`, colors.dim)
+            );
+          } else {
+            console.log(fmt(`  ${icons.cross} Error: ${msg.subtype}`, colors.error));
+          }
+          break;
+
+        case "tool_progress":
+          if (msg.elapsed_time_seconds > 2) {
+            console.log(fmt(`  [${msg.tool_name}] ${msg.elapsed_time_seconds.toFixed(0)}s...`, colors.dim));
+          }
+          break;
+      }
+    }
+
+    return newSessionId;
+  } catch (error) {
+    console.log(
+      fmt(`  ${icons.cross} Error: `, colors.error) +
+      fmt(error instanceof Error ? error.message : String(error), colors.error)
+    );
+    return sessionId;
+  }
+}
+
+/**
+ * 智能路由：根据任务类型选择合适的 Agent
  */
 async function runQuery(prompt: string, sessionId?: string, depth: number = 0): Promise<string | undefined> {
+  // 检测任务类型
+  const agentType = detectTaskType(prompt);
+
+  // 如果是 Coordinator，保持原有的多 Agent 协调逻辑
+  if (agentType === "coordinator") {
+    return runCoordinator(prompt, sessionId, depth);
+  }
+
+  // 否则直接使用专门的 Agent
+  return runAgent(agentType, prompt, sessionId);
+}
+
+/**
+ * 运行 Coordinator（支持多 Agent 协调）
+ */
+async function runCoordinator(prompt: string, sessionId?: string, depth: number = 0): Promise<string | undefined> {
   console.log();
   console.log(fmt(`  ${icons.sparkle} Processing...`, colors.dim));
   console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));

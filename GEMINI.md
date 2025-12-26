@@ -42,7 +42,7 @@ This version (v5) moves away from custom tool loops and raw API calls, fully emb
     *   The agent uses the prompt instructions in `SKILL.md` to execute the task.
 
 3.  **File Context:**
-    *   Use `@filename` to explicitly attach files to the context (e.g., "Fix the bug in @src/utils.ts").
+    *   Use `@filename` to explicitly attach files to the context (e.g., "Fix the bug in src/utils.ts").
 
 ## Directory Structure
 
