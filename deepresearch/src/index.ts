@@ -74,6 +74,18 @@ const SUBAGENTS: Record<SubagentType, SubagentConfig> = {
 // 全局会话记录
 let currentTranscript: Transcript | null = null;
 
+// 子智能体执行深度限制
+const MAX_SUBAGENT_DEPTH = 3;
+
+// 子智能体执行结果
+interface SubagentResult {
+  agent: string;
+  task: string;
+  output: string;
+  success: boolean;
+  duration_ms: number;
+}
+
 /**
  * 加载子智能体提示词
  */
@@ -93,11 +105,126 @@ function loadSubagentPrompt(agentType: SubagentType): string {
 }
 
 /**
+ * 运行子智能体（独立上下文）
+ */
+async function runSubagent(
+  agentType: SubagentType,
+  task: string,
+  context: string,
+  depth: number = 0
+): Promise<SubagentResult> {
+  const startTime = Date.now();
+  const config = SUBAGENTS[agentType];
+  const userCwd = process.cwd();
+
+  // Agent 类型对应的图标
+  const agentIcons: Record<SubagentType, string> = {
+    coordinator: "🎯",
+    reader: "📖",
+    coder: "💻",
+    reviewer: "🔍",
+  };
+  const agentIcon = agentIcons[agentType] || "🤖";
+
+  console.log();
+  console.log(fmt(`  ┌─ ${agentIcon} ${config.name} ─────────────────────`, colors.tiffany));
+  console.log(fmt(`  │ ${task.slice(0, 60)}${task.length > 60 ? '...' : ''}`, colors.dim));
+
+  // 深度检查
+  if (depth >= MAX_SUBAGENT_DEPTH) {
+    console.log(fmt(`  │ [!] Max depth reached, skipping`, colors.error));
+    console.log(fmt(`  └────────────────────────────────────────`, colors.tiffany));
+    return {
+      agent: agentType,
+      task,
+      output: "Max subagent depth reached",
+      success: false,
+      duration_ms: Date.now() - startTime,
+    };
+  }
+
+  // 加载子智能体专属提示词
+  const agentPrompt = loadSubagentPrompt(agentType);
+
+  // 构建子智能体的完整提示
+  const fullPrompt = `${context ? `Context from Coordinator:\n${context}\n\n` : ''}Task: ${task}`;
+
+  let output = "";
+  let success = true;
+
+  try {
+    const result = query({
+      prompt: fullPrompt,
+      options: {
+        cwd: AGENT_ROOT,
+        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+        settingSources: ["project"],
+        additionalDirectories: [userCwd],
+        permissionMode: currentPermissionMode,
+        tools: { type: "preset", preset: "claude_code" },
+        // 不传 resume，独立上下文
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: `${agentPrompt}
+
+Working Directory: ${userCwd}
+You are a specialized ${config.name} agent. Focus on your specific task.
+Respond in the same language as the task description.
+Do NOT dispatch to other agents - complete your task directly.`,
+        },
+      },
+    });
+
+    // 处理子智能体响应
+    for await (const msg of result) {
+      if (msg.type === "assistant") {
+        const content = msg.message.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "text") {
+              output += block.text + "\n";
+              // 缩进显示子智能体输出
+              const lines = block.text.split('\n');
+              for (const line of lines) {
+                console.log(fmt(`  │ `, colors.tiffany) + line);
+              }
+            } else if (block.type === "tool_use") {
+              const toolIcon = getToolIcon(block.name);
+              console.log(fmt(`  │ ${toolIcon} `, colors.tiffany) + fmt(block.name, colors.accent));
+            }
+          }
+        }
+      } else if (msg.type === "result") {
+        if (msg.subtype !== "success") {
+          success = false;
+        }
+      }
+    }
+  } catch (error) {
+    success = false;
+    output = `Error: ${error instanceof Error ? error.message : String(error)}`;
+    console.log(fmt(`  │ [!] ${output}`, colors.error));
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(fmt(`  └─ Done in ${(duration / 1000).toFixed(1)}s ───────────────────`, colors.tiffany));
+
+  return {
+    agent: agentType,
+    task,
+    output: output.trim(),
+    success,
+    duration_ms: duration,
+  };
+}
+
+/**
  * 构建多智能体系统提示词
  */
 function buildMultiAgentSystemPrompt(userCwd: string): string {
   const agentDescriptions = Object.entries(SUBAGENTS)
-    .map(([type, config]) => `- ${config.name}: ${config.description}`)
+    .map(([type, config]) => `- **${config.name}** (${type}): ${config.description}`)
     .join("\n");
 
   return `
@@ -109,34 +236,44 @@ IMPORTANT Language Rules:
 IMPORTANT Working Directory:
 - The user is working in: ${userCwd}
 - When reading/writing files, use paths relative to ${userCwd} or absolute paths
-- Skills are loaded from the agent installation directory
 
 ## Multi-Agent System
 
-You are the Coordinator of a multi-agent coding system. You have access to the following specialized agents:
+You are the **Coordinator** of a multi-agent coding system. You can dispatch tasks to specialized agents:
 
 ${agentDescriptions}
 
-### Workflow
+### How to Dispatch
 
-For complex tasks, follow this workflow:
-1. Analyze the user's request (Coordinator)
-2. If code understanding is needed, invoke Reader first
-3. For code changes, invoke Coder
-4. For quality checks, invoke Reviewer
+When you need a specialized agent, output EXACTLY this format on its own line:
 
-### Agent Invocation
+\`\`\`
+[DISPATCH:reader] Analyze the structure of src/index.ts and identify key functions
+\`\`\`
 
-To invoke a subagent, use this format in your thinking:
-[DISPATCH:AgentName] Task description
+or
 
-Example:
-[DISPATCH:Reader] Analyze the structure of src/index.ts
-[DISPATCH:Coder] Add error handling to the login function
-[DISPATCH:Reviewer] Check the changes for security issues
+\`\`\`
+[DISPATCH:coder] Add error handling to the processData function in utils.ts
+\`\`\`
 
-Skills in .claude/skills/ are automatically available via the Skill tool.
-Use /skill-name to invoke a skill directly.
+**Rules:**
+1. Agent name must be lowercase: reader, coder, reviewer (NOT Reader, Coder, Reviewer)
+2. Put the dispatch command on its own line
+3. The task description should be clear and specific
+4. Wait for the agent's response before continuing
+5. You can dispatch multiple agents sequentially for complex tasks
+
+### Workflow Example
+
+For "Add a login feature":
+1. [DISPATCH:reader] Analyze the current auth structure
+2. Review reader's findings
+3. [DISPATCH:coder] Implement the login function based on the analysis
+4. [DISPATCH:reviewer] Check the implementation for security issues
+5. Summarize results to user
+
+Skills in .claude/skills/ are also available via the Skill tool.
 `;
 }
 
@@ -145,6 +282,27 @@ type PermissionMode = "acceptEdits" | "bypassPermissions";
 
 // 当前权限模式（全局状态）
 let currentPermissionMode: PermissionMode = "acceptEdits";
+
+/**
+ * 检测文本中的派发指令
+ */
+function detectDispatch(text: string): { agent: SubagentType; task: string } | null {
+  // 匹配 [DISPATCH:agentname] task description
+  const pattern = /\[DISPATCH:(\w+)\]\s*(.+)/i;
+  const match = text.match(pattern);
+
+  if (match) {
+    const agentName = match[1].toLowerCase() as SubagentType;
+    const task = match[2].trim();
+
+    // 验证是否是有效的子智能体
+    if (agentName in SUBAGENTS && agentName !== "coordinator") {
+      return { agent: agentName, task };
+    }
+  }
+
+  return null;
+}
 
 // 颜色快捷方式
 const colors = {
@@ -157,6 +315,28 @@ const colors = {
   success: theme.success,
   error: theme.error,
 };
+
+/**
+ * 根据工具名称返回对应的图标
+ */
+function getToolIcon(toolName: string): string {
+  const toolIcons: Record<string, string> = {
+    Read: "📖",
+    Write: "✏️",
+    Edit: "✏️",
+    Bash: "⚡",
+    Glob: "🔍",
+    Grep: "🔍",
+    Task: "🤖",
+    WebFetch: "🌐",
+    WebSearch: "🌐",
+    Skill: "✨",
+    TodoWrite: "📋",
+    LSP: "🔗",
+    NotebookEdit: "📓",
+  };
+  return toolIcons[toolName] || "⚙️";
+}
 
 /**
  * 打印 Banner
@@ -291,54 +471,37 @@ Alternatively, run: pdftotext "${fullPath}" -
 }
 
 /**
- * 使用 Claude Agent SDK 运行查询
+ * 使用 Claude Agent SDK 运行查询（支持 Multi-Agent 调度）
  */
-async function runQuery(prompt: string, sessionId?: string): Promise<string | undefined> {
+async function runQuery(prompt: string, sessionId?: string, depth: number = 0): Promise<string | undefined> {
   console.log();
   console.log(fmt(`  ${icons.sparkle} Processing...`, colors.dim));
   console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));
   console.log();
 
   try {
-    // 用户的实际工作目录
     const userCwd = process.cwd();
+    let newSessionId: string | undefined;
+    let collectedText = "";  // 收集 Coordinator 的输出
+    const pendingDispatches: Array<{ agent: SubagentType; task: string }> = [];
 
     const result = query({
       prompt,
       options: {
-        // 关键：设置 cwd 为 agent 安装目录，这样 Skills 才能被加载
         cwd: AGENT_ROOT,
-
-        // 使用环境变量中的 model，默认为 claude-sonnet-4-20250514
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-
-        // 加载项目设置（从 AGENT_ROOT/.claude/skills/ 加载 Skills）
         settingSources: ["project"],
-
-        // 授予用户工作目录的文件访问权限
         additionalDirectories: [userCwd],
-
-        // MCP Servers 配置
         mcpServers: {
           playwright: {
             command: "npx",
             args: ["-y", "@playwright/mcp@latest"],
           },
         },
-
-        // 自动接受文件编辑
         permissionMode: currentPermissionMode,
-
-        // 使用 Claude Code 默认工具集
         tools: { type: "preset", preset: "claude_code" },
-
-        // 恢复之前的会话
         resume: sessionId,
-
-        // 包含流式消息
         includePartialMessages: true,
-
-        // 系统提示词（Multi-Agent）
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
@@ -347,24 +510,50 @@ async function runQuery(prompt: string, sessionId?: string): Promise<string | un
       },
     });
 
-    let newSessionId: string | undefined;
-
     // 处理流式响应
     for await (const msg of result) {
       switch (msg.type) {
         case "system":
           if (msg.subtype === "init") {
             newSessionId = msg.session_id;
-            console.log(fmt(`  Session: ${msg.session_id.slice(0, 8)}...`, colors.dim));
-            if (msg.skills && msg.skills.length > 0) {
-              console.log(fmt(`  Skills: ${msg.skills.join(", ")}`, colors.tiffany));
-            }
+            // 显示当前 Agent 类型和会话 ID
+            const agentLabel = depth === 0 ? "Coordinator" : "Agent";
+            console.log(fmt(`  🎯 ${agentLabel}`, colors.accent) +
+              fmt(` | Session: ${msg.session_id.slice(0, 8)}`, colors.dim));
             console.log();
           }
           break;
 
         case "assistant":
-          processAssistantMessage(msg);
+          const content = msg.message.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type === "text") {
+                collectedText += block.text;
+
+                // 检测派发指令
+                const dispatch = detectDispatch(block.text);
+                if (dispatch) {
+                  pendingDispatches.push(dispatch);
+                  console.log(fmt(`  ⤷ [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task, colors.dim));
+                } else {
+                  console.log(block.text);
+                }
+
+                if (currentTranscript) {
+                  currentTranscript.addAssistant(block.text);
+                }
+              } else if (block.type === "tool_use") {
+                // 更详细的工具状态显示
+                const toolName = block.name;
+                const toolIcon = getToolIcon(toolName);
+                console.log(fmt(`  ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
+                if (currentTranscript) {
+                  currentTranscript.addTool(block.name, block.input);
+                }
+              }
+            }
+          }
           break;
 
         case "result":
@@ -372,25 +561,47 @@ async function runQuery(prompt: string, sessionId?: string): Promise<string | un
           if (msg.subtype === "success") {
             console.log(
               fmt(`  ${icons.check} `, colors.success) +
-              fmt(`Done in ${(msg.duration_ms / 1000).toFixed(1)}s`, colors.dim) +
+              fmt(`Coordinator done in ${(msg.duration_ms / 1000).toFixed(1)}s`, colors.dim) +
               fmt(` | $${msg.total_cost_usd.toFixed(4)}`, colors.dim)
             );
           } else {
             console.log(fmt(`  ${icons.cross} Error: ${msg.subtype}`, colors.error));
-            if ("errors" in msg && msg.errors) {
-              for (const e of msg.errors as string[]) {
-                console.log(fmt(`    ${e}`, colors.error));
-              }
-            }
           }
           break;
 
         case "tool_progress":
-          // 只显示长时间运行的工具
           if (msg.elapsed_time_seconds > 2) {
             console.log(fmt(`  [${msg.tool_name}] ${msg.elapsed_time_seconds.toFixed(0)}s...`, colors.dim));
           }
           break;
+      }
+    }
+
+    // 执行收集到的派发任务
+    if (pendingDispatches.length > 0 && depth < MAX_SUBAGENT_DEPTH) {
+      console.log();
+      console.log(fmt(`  ═══ Executing ${pendingDispatches.length} subagent(s) ═══`, colors.accent));
+
+      const subagentResults: SubagentResult[] = [];
+
+      for (const dispatch of pendingDispatches) {
+        const subResult = await runSubagent(
+          dispatch.agent,
+          dispatch.task,
+          collectedText,  // 传递 Coordinator 的上下文
+          depth + 1
+        );
+        subagentResults.push(subResult);
+      }
+
+      // 将子智能体结果反馈给 Coordinator
+      if (subagentResults.length > 0 && newSessionId) {
+        const feedbackPrompt = buildSubagentFeedback(subagentResults);
+        console.log();
+        console.log(fmt(`  ═══ Coordinator processing results ═══`, colors.accent));
+
+        // 递归调用，让 Coordinator 处理子智能体结果
+        return await runQuery(feedbackPrompt, newSessionId, depth + 1);
       }
     }
 
@@ -405,16 +616,47 @@ async function runQuery(prompt: string, sessionId?: string): Promise<string | un
 }
 
 /**
+ * 构建子智能体结果反馈
+ */
+function buildSubagentFeedback(results: SubagentResult[]): string {
+  const feedback = results.map(r => {
+    const status = r.success ? "✓ Success" : "✗ Failed";
+    return `## ${SUBAGENTS[r.agent as SubagentType].name} Agent Result (${status})
+
+**Task:** ${r.task}
+
+**Output:**
+${r.output}
+
+**Duration:** ${(r.duration_ms / 1000).toFixed(1)}s`;
+  }).join("\n\n---\n\n");
+
+  return `The following subagent(s) have completed their tasks. Please review their results and continue:
+
+${feedback}
+
+Based on these results, please continue with the original task or provide a summary to the user.`;
+}
+
+/**
  * 从目录加载 skills
  */
-function loadSkillsFromDir(skillsDir: string): Command[] {
+function loadSkillsFromDir(skillsDir: string, excludeInternal: boolean = false): Command[] {
   const skillCommands: Command[] = [];
+
+  // 内部 Skills，仅供 Agent 使用，用户无法通过 / 命令触发
+  const internalSkills = ["web-scrape", "doc-generate", "deep-research"];
 
   if (fs.existsSync(skillsDir)) {
     try {
       const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
+          // 过滤内部 skills
+          if (excludeInternal && internalSkills.includes(entry.name)) {
+            continue;
+          }
+
           const skillMdPath = path.join(skillsDir, entry.name, "SKILL.md");
           if (fs.existsSync(skillMdPath)) {
             const content = fs.readFileSync(skillMdPath, "utf-8");
@@ -437,6 +679,7 @@ function loadSkillsFromDir(skillsDir: string): Command[] {
 
 /**
  * 构建命令列表（内置 + 全局 Skills + 项目 Skills）
+ * 注意：内部 Skills (web-scrape, doc-generate, deep-research) 不显示在菜单中
  */
 function buildCommandList(): Command[] {
   const builtinCommands: Command[] = [
@@ -446,9 +689,9 @@ function buildCommandList(): Command[] {
     { name: "exit", description: "Exit program" },
   ];
 
-  // 加载全局 skills（从 agent 安装目录）
+  // 加载全局 skills（从 agent 安装目录），排除内部 skills
   const globalSkillsDir = path.join(AGENT_ROOT, ".claude", "skills");
-  const globalSkills = loadSkillsFromDir(globalSkillsDir);
+  const globalSkills = loadSkillsFromDir(globalSkillsDir, true);
 
   // 加载项目 skills（从当前工作目录）
   const projectSkillsDir = path.join(process.cwd(), ".claude", "skills");
@@ -596,10 +839,17 @@ User request: ${message || "Analyze the attached file(s)"}`.trim();
   }
 
   // 如果是 skill 命令（/skill-name），转换为自然语言请求
+  // 注意：单独的 "/" 应该由 SmartInput 处理，不应该到达这里
   if (message.startsWith("/") && !message.startsWith("/exit") && !message.startsWith("/help") && !message.startsWith("/clear") && !message.startsWith("/mode")) {
     const skillName = message.split(" ")[0].slice(1);
-    const args = message.slice(skillName.length + 2).trim();
-    message = `Use the "${skillName}" skill${args ? ` with: ${args}` : ""}`;
+    // 确保 skillName 不为空
+    if (skillName) {
+      const args = message.slice(skillName.length + 2).trim();
+      message = `Use the "${skillName}" skill${args ? ` with: ${args}` : ""}`;
+    } else {
+      // 单独的 "/" 忽略
+      return { continue: true, sessionId };
+    }
   }
 
   // 运行查询

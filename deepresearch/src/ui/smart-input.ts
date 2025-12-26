@@ -66,8 +66,8 @@ export async function smartInput(options: SmartInputOptions = {}): Promise<Smart
 
     const trimmed = input.trim();
 
-    // "/" 单独 - 命令选择器
-    if (trimmed === "/") {
+    // "/" 单独或以 "/" 开头但没有完整命令名 - 打开命令选择器
+    if (trimmed === "/" || trimmed === "/\r" || trimmed === "/\n") {
       console.log();
       const picker = new CommandPicker({ commands });
       const result = await picker.pick();
@@ -79,7 +79,8 @@ export async function smartInput(options: SmartInputOptions = {}): Promise<Smart
           cancelled: false,
         };
       }
-      // 取消了，继续循环
+      // 取消了或没有选择命令，继续循环
+      console.log(fmt("  (Cancelled)", theme.dim));
       continue;
     }
 
