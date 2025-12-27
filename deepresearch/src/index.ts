@@ -389,6 +389,9 @@ async function runQuery(prompt: string, sessionId?: string, depth: number = 0): 
   // 检测任务类型
   const agentType = detectTaskType(prompt);
 
+  // 调试：显示路由决策
+  console.log(fmt(`  [Router] Selected agent: ${agentType}`, colors.dim));
+
   // 如果是 Coordinator，保持原有的多 Agent 协调逻辑
   if (agentType === "coordinator") {
     return runCoordinator(prompt, sessionId, depth);

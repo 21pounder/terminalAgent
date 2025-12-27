@@ -36,17 +36,17 @@ export class Router {
       return skillDecision;
     }
 
-    // 2. 关键词匹配
+    // 2. 关键词匹配 - 只要命中任意关键词就路由
     const keywordDecision = this.matchKeywords(lowerPrompt);
-    if (keywordDecision.confidence > 0.5) {
+    if (keywordDecision.confidence > 0) {
       return keywordDecision;
     }
 
-    // 3. 默认使用 Coordinator
+    // 3. 默认使用 Reader（而非 Coordinator）- 先理解再行动
     return {
-      agent: "coordinator",
+      agent: "reader",
       confidence: 0.3,
-      reason: "Default: No specific pattern matched",
+      reason: "Default: Start with understanding the context",
     };
   }
 
@@ -202,10 +202,10 @@ export class Router {
     let level: "simple" | "medium" | "complex";
     let suggestedAgents: SubagentType[];
 
-    if (complexityScore >= 4) {
+    if (complexityScore >= 3) {
       level = "complex";
-      suggestedAgents = ["coordinator", "reader", "coder", "reviewer"];
-    } else if (complexityScore >= 2) {
+      suggestedAgents = ["reader", "coder", "reviewer"];
+    } else if (complexityScore >= 1) {
       level = "medium";
       suggestedAgents = ["reader", "coder"];
     } else {
