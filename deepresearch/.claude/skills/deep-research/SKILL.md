@@ -1,13 +1,17 @@
 ---
 name: deep-research
-description: Use this skill when user asks to "research a topic", "investigate thoroughly", "deep dive into", "analyze in depth", or needs comprehensive multi-source research with citations.
-version: 1.0.0
-allowed-tools: [Read, Glob, Grep, WebFetch, WebSearch]
+description: Conduct deep code research using Dify-powered workflow - searches documentation, APIs, best practices, and returns structured implementation guidance.
+version: 3.0.0
+allowed-tools: [Bash, Glob, Read]
 ---
 
-# Deep Research
+# Deep Research (Dify Powered)
 
-Conduct comprehensive research on any topic using multiple sources, providing structured analysis with citations.
+This skill delegates coding research to a specialized Dify Workflow that:
+1. Searches official documentation and tutorials
+2. Analyzes the coding task with DeepSeek Reasoner
+3. Iteratively searches for code examples, Stack Overflow solutions, and GitHub repos
+4. Generates a complete implementation guide with working code
 
 ## Parameters
 
@@ -15,89 +19,98 @@ Conduct comprehensive research on any topic using multiple sources, providing st
 {
   "type": "object",
   "properties": {
-    "topic": {
+    "coding_task": {
       "type": "string",
-      "description": "The topic or question to research"
+      "description": "The coding task or question to research (required)"
+    },
+    "tech_stack": {
+      "type": "string",
+      "description": "Technology stack context (e.g., 'React 18, TypeScript, Next.js')"
     },
     "depth": {
-      "type": "string",
-      "enum": ["quick", "standard", "comprehensive"],
-      "description": "Research depth level",
-      "default": "standard"
-    },
-    "sources": {
       "type": "integer",
-      "description": "Minimum number of sources to consult",
-      "default": 5
+      "minimum": 1,
+      "maximum": 5,
+      "default": 3,
+      "description": "Research depth (1=quick, 3=standard, 5=comprehensive)"
     }
   },
-  "required": ["topic"]
+  "required": ["coding_task"]
+}
+```
+
+## Workflow
+
+### Step 1: Locate the Client Script
+The client script is at: `.claude/skills/deep-research/scripts/dify-client.ts`
+Use `Glob` to find the absolute path if needed.
+
+### Step 2: Execute Research
+Use `Bash` to run the script with `npx tsx`:
+
+```bash
+npx tsx "<path_to_script>" "<coding_task>" "<tech_stack>" <depth>
+```
+
+**Examples:**
+```bash
+# Basic research
+npx tsx ".claude/skills/deep-research/scripts/dify-client.ts" "How to implement OAuth2 in Next.js"
+
+# With tech stack
+npx tsx ".claude/skills/deep-research/scripts/dify-client.ts" "Add real-time notifications" "React 18, Socket.io"
+
+# With depth
+npx tsx ".claude/skills/deep-research/scripts/dify-client.ts" "Optimize database queries" "PostgreSQL, Prisma" 5
+```
+
+### Step 3: Process Results
+The script returns JSON with two main fields:
+- `analysis`: Task analysis with knowledge gaps and tech requirements
+- `guide`: Complete implementation guide with:
+  - TASK_SUMMARY
+  - DEPENDENCIES (install commands)
+  - FILES_TO_CREATE (complete code)
+  - FILES_TO_MODIFY (change instructions)
+  - ENVIRONMENT_CONFIG
+  - VERIFICATION (test commands)
+  - GOTCHAS (common issues)
+  - SOURCES
+
+### Step 4: Implement
+Use the guide to:
+1. Install dependencies
+2. Create new files with provided code
+3. Modify existing files as instructed
+4. Set up environment variables
+5. Run verification commands
+
+## Error Handling
+
+If the script returns an error:
+1. The script automatically loads `.env` from the project root (no manual env setup needed)
+2. If still failing, check that `.env` contains `DIFY_API_KEY` and `DIFY_BASE_URL`
+3. Verify the Dify API is accessible
+
+## Output Format
+
+```json
+{
+  "success": true,
+  "data": {
+    "analysis": "{ JSON task analysis }",
+    "guide": "# Implementation Guide\n\n### TASK_SUMMARY\n..."
+  },
+  "metadata": {
+    "duration_ms": 45000,
+    "workflow_run_id": "abc123"
+  }
 }
 ```
 
 ## When to Use
 
-- User asks to "research" or "investigate" a topic
-- User wants a "deep dive" or "comprehensive analysis"
-- User needs information from multiple sources
-- User asks for comparisons with evidence
-- User wants citations and references
-
-## Methodology
-
-### Phase 1: Query Analysis
-- Parse the research question
-- Identify key concepts and search terms
-- Determine scope and boundaries
-- Plan search strategy
-
-### Phase 2: Information Gathering
-1. **Web Search**: Execute multiple targeted searches
-2. **Source Evaluation**: Assess credibility and relevance
-3. **Content Extraction**: Extract key facts and data
-4. **Local Files**: Check if relevant local documents exist
-
-### Phase 3: Synthesis
-- Cross-reference information across sources
-- Identify patterns, trends, and contradictions
-- Distinguish facts from opinions
-- Fill information gaps with additional searches
-
-### Phase 4: Output
-Provide structured report with:
-- Executive summary (2-3 sentences)
-- Key findings with inline citations
-- Analysis and insights
-- Sources list with URLs
-
-## Guidelines
-
-- Always cite sources with URLs
-- Distinguish facts from interpretations
-- Present balanced perspectives on controversial topics
-- Acknowledge limitations and gaps in available information
-- Use the user's language for the report
-
-## Examples
-
-### Example 1: Technology Research
-
-**User Input**: "Research the current state of WebAssembly adoption in 2024"
-
-**Expected Behavior**:
-1. Search for WebAssembly adoption statistics and trends
-2. Consult browser support data and developer surveys
-3. Find real-world use cases and performance benchmarks
-4. Synthesize findings into structured report
-5. Provide at least 5 cited sources
-
-### Example 2: Comparison Research
-
-**User Input**: "深度研究 React vs Vue 的优劣势"
-
-**Expected Behavior**:
-1. 研究每个框架的架构、性能、生态系统
-2. 基于学习曲线、性能、社区支持等维度对比
-3. 提供有证据支持的平衡分析
-4. 包含官方文档、基准测试、开发者调查等引用
-5. 用中文输出完整报告
+- Complex implementation tasks requiring research
+- Integrating unfamiliar APIs or libraries
+- Finding best practices and working examples
+- Understanding new frameworks or patterns

@@ -1,11 +1,15 @@
 /**
- * Terminal Coding Agent - Multi-Agent Architecture
+ * Terminal Coding Agent - Multi-Agent Architecture v2
  *
  * 功能：
  * - "/" 智能指令选择器
  * - "@" 文件浏览器引用
  * - 官方 Skills 系统支持
  * - Multi-Agent: Coordinator, Reader, Coder, Reviewer
+ * - 真正的多Agent并行执行
+ * - 共享上下文和消息总线
+ * - ReAct 推理模式
+ * - 循环检测和上下文压缩
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -18,8 +22,7 @@ const __dirname = path.dirname(__filename);
 const AGENT_ROOT = path.resolve(__dirname, "..");  // deepresearch/
 dotenv.config({ path: path.join(AGENT_ROOT, ".env") });
 
-import { query, type SDKMessage, type SDKAssistantMessage } from "@anthropic-ai/claude-agent-sdk";
-const GLOBAL_SKILLS_DIR = path.join(AGENT_ROOT, ".claude");
+// SDK types imported as needed
 
 import {
   theme,
@@ -33,124 +36,44 @@ import {
   pickCommand,
 } from "./ui/index.js";
 
-import { tracker, messageHandler, Transcript } from "./utils/index.js";
+import { Transcript } from "./utils/index.js";
 
-// 版本号
-const VERSION = "6.0.0";
-
-// 子智能体类型
-type SubagentType = "coordinator" | "reader" | "coder" | "reviewer";
-
-// 子智能体配置
-interface SubagentConfig {
-  name: string;
-  description: string;
-  promptFile: string;
-}
-
-const SUBAGENTS: Record<SubagentType, SubagentConfig> = {
-  coordinator: {
-    name: "Coordinator",
-    description: "理解意图，分配任务",
-    promptFile: "coordinator.md",
-  },
-  reader: {
-    name: "Reader",
-    description: "代码阅读和理解",
-    promptFile: "reader.md",
-  },
-  coder: {
-    name: "Coder",
-    description: "代码编写和修改",
-    promptFile: "coder.md",
-  },
-  reviewer: {
-    name: "Reviewer",
-    description: "代码审查和质量检查",
-    promptFile: "reviewer.md",
-  },
-};
+// 新架构导入
+import { VERSION, MAX_SUBAGENT_DEPTH } from "./config/constants.js";
+import { AGENT_CONFIGS, AGENT_ICONS, TOOL_ICONS } from "./config/agents.js";
+import type { SubagentType, AgentResult, PermissionMode } from "./agents/types.js";
+import { getAgentRegistry, type AgentCallbacks } from "./agents/index.js";
+import { getRouter } from "./core/router.js";
 
 // 全局会话记录
 let currentTranscript: Transcript | null = null;
 
-// 子智能体执行深度限制
-const MAX_SUBAGENT_DEPTH = 3;
+// 权限模式（全局状态）- 默认 unsafe 模式
+let currentPermissionMode: PermissionMode = "bypassPermissions";
 
-// Agent 图标映射
-const AGENT_ICONS: Record<SubagentType, string> = {
-  coordinator: "🎯",
-  reader: "📖",
-  coder: "💻",
-  reviewer: "🔍",
-};
+// 初始化 Agent Registry
+const agentRegistry = getAgentRegistry();
+
+/**
+ * 初始化 Agent 系统
+ */
+function initializeAgents(): void {
+  const userCwd = process.cwd();
+  agentRegistry.setEnvironment(AGENT_ROOT, userCwd, currentPermissionMode);
+}
 
 /**
  * 检测任务类型，决定使用哪个 Agent
+ * 使用新的 Router 系统
  */
 function detectTaskType(prompt: string): SubagentType {
-  const lowerPrompt = prompt.toLowerCase();
-
-  // Skill 命令映射（优先级最高）
-  if (lowerPrompt.includes('use the "code-review" skill') || lowerPrompt.includes("/code-review")) {
-    return "reviewer";
-  }
-  if (lowerPrompt.includes('use the "git-commit" skill') || lowerPrompt.includes("/git-commit")) {
-    return "coder";
-  }
-  if (lowerPrompt.includes('use the "pdf-analyze" skill') || lowerPrompt.includes("/pdf-analyze")) {
-    return "reader";
-  }
-  if (lowerPrompt.includes('use the "debug-complex" skill') || lowerPrompt.includes("/debug-complex")) {
-    return "coordinator"; // 复杂调试需要协调
-  }
-
-  // 使用词边界匹配，避免 "readme" 匹配到 "read"
-  const matchWord = (text: string, word: string): boolean => {
-    const regex = new RegExp(`\\b${word}\\b`, 'i');
-    return regex.test(text);
-  };
-
-  // 关键词检测 - Coder（优先检测，因为写代码更明确）
-  const coderKeywords = [
-    "修改", "添加", "实现", "写", "创建", "修复", "fix", "重构",
-    "add", "implement", "write", "create", "modify", "update", "refactor",
-    "生成", "generate", "make", "build"
-  ];
-  for (const keyword of coderKeywords) {
-    if (matchWord(lowerPrompt, keyword)) {
-      return "coder";
-    }
-  }
-
-  // 关键词检测 - Reviewer
-  const reviewerKeywords = [
-    "审查", "检查", "review", "check", "审核", "bug", "安全",
-    "security", "vulnerability", "issue", "问题"
-  ];
-  for (const keyword of reviewerKeywords) {
-    if (matchWord(lowerPrompt, keyword)) {
-      return "reviewer";
-    }
-  }
-
-  // 关键词检测 - Reader
-  const readerKeywords = [
-    "分析", "阅读", "理解", "解释", "查看", "看看", "了解",
-    "analyze", "read", "understand", "explain", "look", "what is", "how does"
-  ];
-  for (const keyword of readerKeywords) {
-    if (matchWord(lowerPrompt, keyword)) {
-      return "reader";
-    }
-  }
-
-  // 默认使用 Coordinator 处理复杂/不确定的任务
-  return "coordinator";
+  const router = getRouter();
+  return router.route(prompt);
 }
 
-// 子智能体执行结果
-interface SubagentResult {
+// 子智能体执行结果（使用新类型）
+// 保留接口以兼容现有代码
+interface SubagentResultLegacy {
   agent: string;
   task: string;
   output: string;
@@ -159,44 +82,20 @@ interface SubagentResult {
 }
 
 /**
- * 加载子智能体提示词
- */
-function loadSubagentPrompt(agentType: SubagentType): string {
-  const config = SUBAGENTS[agentType];
-  const promptPath = path.join(AGENT_ROOT, "src", "prompts", config.promptFile);
-
-  try {
-    if (fs.existsSync(promptPath)) {
-      return fs.readFileSync(promptPath, "utf-8");
-    }
-  } catch {
-    // 忽略读取错误
-  }
-
-  return `You are the ${config.name} agent. ${config.description}.`;
-}
-
-/**
  * 运行子智能体（独立上下文）
+ * 使用新的 Agent 类
  */
 async function runSubagent(
   agentType: SubagentType,
   task: string,
   context: string,
   depth: number = 0
-): Promise<SubagentResult> {
+): Promise<SubagentResultLegacy> {
   const startTime = Date.now();
-  const config = SUBAGENTS[agentType];
-  const userCwd = process.cwd();
+  const config = AGENT_CONFIGS[agentType];
 
   // Agent 类型对应的图标
-  const agentIcons: Record<SubagentType, string> = {
-    coordinator: "🎯",
-    reader: "📖",
-    coder: "💻",
-    reviewer: "🔍",
-  };
-  const agentIcon = agentIcons[agentType] || "🤖";
+  const agentIcon = AGENT_ICONS[agentType] || "🤖";
 
   console.log();
   console.log(fmt(`  ┌─ ${agentIcon} ${config.name} ─────────────────────`, colors.tiffany));
@@ -215,145 +114,61 @@ async function runSubagent(
     };
   }
 
-  // 加载子智能体专属提示词
-  const agentPrompt = loadSubagentPrompt(agentType);
+  // 使用新的 Agent 类执行
+  const agent = agentRegistry.get(agentType);
 
-  // 构建子智能体的完整提示
-  const fullPrompt = `${context ? `Context from Coordinator:\n${context}\n\n` : ''}Task: ${task}`;
-
-  let output = "";
-  let success = true;
-
-  try {
-    const result = query({
-      prompt: fullPrompt,
-      options: {
-        cwd: AGENT_ROOT,
-        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-        settingSources: ["project"],
-        additionalDirectories: [userCwd],
-        permissionMode: currentPermissionMode,
-        tools: { type: "preset", preset: "claude_code" },
-        // 不传 resume，独立上下文
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: `${agentPrompt}
-
-Working Directory: ${userCwd}
-You are a specialized ${config.name} agent. Focus on your specific task.
-Respond in the same language as the task description.
-Do NOT dispatch to other agents - complete your task directly.`,
-        },
-      },
-    });
-
-    // 处理子智能体响应
-    for await (const msg of result) {
-      if (msg.type === "assistant") {
-        const content = msg.message.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === "text") {
-              output += block.text + "\n";
-              // 缩进显示子智能体输出
-              const lines = block.text.split('\n');
-              for (const line of lines) {
-                console.log(fmt(`  │ `, colors.tiffany) + line);
-              }
-            } else if (block.type === "tool_use") {
-              const toolIcon = getToolIcon(block.name);
-              console.log(fmt(`  │ ${toolIcon} `, colors.tiffany) + fmt(block.name, colors.accent));
-            }
-          }
-        }
-      } else if (msg.type === "result") {
-        if (msg.subtype !== "success") {
-          success = false;
-        }
+  // 创建回调处理 UI 显示
+  const callbacks: AgentCallbacks = {
+    onInit: (sessionId) => {
+      // 子 Agent 不显示 session ID
+    },
+    onText: (text) => {
+      // 缩进显示子智能体输出
+      const lines = text.split('\n');
+      for (const line of lines) {
+        console.log(fmt(`  │ `, colors.tiffany) + line);
       }
-    }
+    },
+    onToolUse: (toolName) => {
+      const toolIcon = getToolIcon(toolName);
+      console.log(fmt(`  │ ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
+    },
+    onResult: (success, duration, cost) => {
+      // 结果在最后统一处理
+    },
+    onProgress: (toolName, elapsed) => {
+      if (elapsed > 2) {
+        console.log(fmt(`  │ [${toolName}] ${elapsed.toFixed(0)}s...`, colors.dim));
+      }
+    },
+  };
+
+  let result: AgentResult;
+  try {
+    result = await agent.execute(task, context, callbacks);
   } catch (error) {
-    success = false;
-    output = `Error: ${error instanceof Error ? error.message : String(error)}`;
-    console.log(fmt(`  │ [!] ${output}`, colors.error));
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.log(fmt(`  │ [!] Error: ${errorMsg}`, colors.error));
+    result = {
+      agent: agentType,
+      task,
+      output: `Error: ${errorMsg}`,
+      success: false,
+      duration_ms: Date.now() - startTime,
+    };
   }
 
   const duration = Date.now() - startTime;
   console.log(fmt(`  └─ Done in ${(duration / 1000).toFixed(1)}s ───────────────────`, colors.tiffany));
 
   return {
-    agent: agentType,
-    task,
-    output: output.trim(),
-    success,
-    duration_ms: duration,
+    agent: result.agent,
+    task: result.task,
+    output: result.output,
+    success: result.success,
+    duration_ms: result.duration_ms,
   };
 }
-
-/**
- * 构建多智能体系统提示词
- */
-function buildMultiAgentSystemPrompt(userCwd: string): string {
-  const agentDescriptions = Object.entries(SUBAGENTS)
-    .map(([type, config]) => `- **${config.name}** (${type}): ${config.description}`)
-    .join("\n");
-
-  return `
-IMPORTANT Language Rules:
-- You MUST respond to the user in the same language they use
-- If the user writes in Chinese, respond in Chinese
-- If the user writes in English, respond in English
-
-IMPORTANT Working Directory:
-- The user is working in: ${userCwd}
-- When reading/writing files, use paths relative to ${userCwd} or absolute paths
-
-## Multi-Agent System
-
-You are the **Coordinator** of a multi-agent coding system. You can dispatch tasks to specialized agents:
-
-${agentDescriptions}
-
-### How to Dispatch
-
-When you need a specialized agent, output EXACTLY this format on its own line:
-
-\`\`\`
-[DISPATCH:reader] Analyze the structure of src/index.ts and identify key functions
-\`\`\`
-
-or
-
-\`\`\`
-[DISPATCH:coder] Add error handling to the processData function in utils.ts
-\`\`\`
-
-**Rules:**
-1. Agent name must be lowercase: reader, coder, reviewer (NOT Reader, Coder, Reviewer)
-2. Put the dispatch command on its own line
-3. The task description should be clear and specific
-4. Wait for the agent's response before continuing
-5. You can dispatch multiple agents sequentially for complex tasks
-
-### Workflow Example
-
-For "Add a login feature":
-1. [DISPATCH:reader] Analyze the current auth structure
-2. Review reader's findings
-3. [DISPATCH:coder] Implement the login function based on the analysis
-4. [DISPATCH:reviewer] Check the implementation for security issues
-5. Summarize results to user
-
-Skills in .claude/skills/ are also available via the Skill tool.
-`;
-}
-
-// 权限模式类型
-type PermissionMode = "acceptEdits" | "bypassPermissions";
-
-// 当前权限模式（全局状态）
-let currentPermissionMode: PermissionMode = "acceptEdits";
 
 /**
  * 检测文本中的派发指令
@@ -368,7 +183,7 @@ function detectDispatch(text: string): { agent: SubagentType; task: string } | n
     const task = match[2].trim();
 
     // 验证是否是有效的子智能体
-    if (agentName in SUBAGENTS && agentName !== "coordinator") {
+    if (agentName in AGENT_CONFIGS && agentName !== "coordinator") {
       return { agent: agentName, task };
     }
   }
@@ -390,24 +205,10 @@ const colors = {
 
 /**
  * 根据工具名称返回对应的图标
+ * 使用新的 TOOL_ICONS 配置
  */
 function getToolIcon(toolName: string): string {
-  const toolIcons: Record<string, string> = {
-    Read: "📖",
-    Write: "✏️",
-    Edit: "✏️",
-    Bash: "⚡",
-    Glob: "🔍",
-    Grep: "🔍",
-    Task: "🤖",
-    WebFetch: "🌐",
-    WebSearch: "🌐",
-    Skill: "✨",
-    TodoWrite: "📋",
-    LSP: "🔗",
-    NotebookEdit: "📓",
-  };
-  return toolIcons[toolName] || "⚙️";
+  return TOOL_ICONS[toolName] || "⚙️";
 }
 
 /**
@@ -463,40 +264,6 @@ function printBanner(): void {
 }
 
 /**
- * 处理 Assistant 消息
- */
-function processAssistantMessage(msg: SDKAssistantMessage): void {
-  const content = msg.message.content;
-  if (Array.isArray(content)) {
-    for (const block of content) {
-      if (block.type === "text") {
-        // 检测子智能体派发
-        const events = messageHandler.processMessage(msg);
-        for (const event of events) {
-          if (event.type === "subagent_dispatch") {
-            const dispatch = event.content as { targetAgent: string; task: string };
-            console.log(fmt(`  ⤷ [${dispatch.targetAgent}] `, colors.tiffany) + fmt(dispatch.task, colors.dim));
-          }
-        }
-        console.log(block.text);
-
-        // 记录到会话日志
-        if (currentTranscript) {
-          currentTranscript.addAssistant(block.text);
-        }
-      } else if (block.type === "tool_use") {
-        console.log(fmt(`  [${block.name}]`, colors.tiffany));
-
-        // 记录工具调用
-        if (currentTranscript) {
-          currentTranscript.addTool(block.name, block.input);
-        }
-      }
-    }
-  }
-}
-
-/**
  * 读取附加文件内容
  */
 function readAttachedFiles(files: FileItem[]): string {
@@ -543,36 +310,8 @@ Alternatively, run: pdftotext "${fullPath}" -
 }
 
 /**
- * 构建 Agent 专属的 System Prompt
- */
-function buildAgentSystemPrompt(agentType: SubagentType, userCwd: string): string {
-  const agentPrompt = loadSubagentPrompt(agentType);
-  const config = SUBAGENTS[agentType];
-
-  if (agentType === "coordinator") {
-    // Coordinator 需要多 Agent 协调能力
-    return buildMultiAgentSystemPrompt(userCwd);
-  }
-
-  // 其他 Agent 使用专属 prompt
-  return `${agentPrompt}
-
-IMPORTANT Language Rules:
-- You MUST respond to the user in the same language they use
-- If the user writes in Chinese, respond in Chinese
-- If the user writes in English, respond in English
-
-IMPORTANT Working Directory:
-- The user is working in: ${userCwd}
-- When reading/writing files, use paths relative to ${userCwd} or absolute paths
-
-You are the ${config.name} agent. ${config.description}.
-Focus on your specific task and complete it directly.
-Skills in .claude/skills/ are available via the Skill tool.`;
-}
-
-/**
- * 使用 Claude Agent SDK 运行指定类型的 Agent
+ * 使用 Agent 类运行指定类型的 Agent
+ * 使用 AgentRegistry 管理 Agent 实例
  */
 async function runAgent(
   agentType: SubagentType,
@@ -584,93 +323,55 @@ async function runAgent(
   console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));
   console.log();
 
-  try {
-    const userCwd = process.cwd();
-    let newSessionId: string | undefined;
-    const config = SUBAGENTS[agentType];
-    const agentIcon = AGENT_ICONS[agentType];
+  const config = AGENT_CONFIGS[agentType];
+  const agentIcon = AGENT_ICONS[agentType];
+  let newSessionId: string | undefined;
 
-    const result = query({
-      prompt,
-      options: {
-        cwd: AGENT_ROOT,
-        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-        settingSources: ["project"],
-        additionalDirectories: [userCwd],
-        mcpServers: {
-          playwright: {
-            command: "npx",
-            args: ["-y", "@playwright/mcp@latest"],
-          },
-        },
-        permissionMode: currentPermissionMode,
-        tools: { type: "preset", preset: "claude_code" },
-        resume: sessionId,
-        includePartialMessages: true,
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: buildAgentSystemPrompt(agentType, userCwd),
-        },
-      },
-    });
+  // 获取 Agent 实例
+  const agent = agentRegistry.get(agentType);
 
-    // 处理流式响应
-    for await (const msg of result) {
-      switch (msg.type) {
-        case "system":
-          if (msg.subtype === "init") {
-            newSessionId = msg.session_id;
-            // 显示当前 Agent 类型和会话 ID
-            console.log(fmt(`  ${agentIcon} ${config.name}`, colors.accent) +
-              fmt(` | Session: ${msg.session_id.slice(0, 8)}`, colors.dim));
-            console.log();
-          }
-          break;
-
-        case "assistant":
-          const content = msg.message.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === "text") {
-                console.log(block.text);
-
-                if (currentTranscript) {
-                  currentTranscript.addAssistant(block.text);
-                }
-              } else if (block.type === "tool_use") {
-                const toolName = block.name;
-                const toolIcon = getToolIcon(toolName);
-                console.log(fmt(`  ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
-                if (currentTranscript) {
-                  currentTranscript.addTool(block.name, block.input);
-                }
-              }
-            }
-          }
-          break;
-
-        case "result":
-          console.log();
-          if (msg.subtype === "success") {
-            console.log(
-              fmt(`  ${icons.check} `, colors.success) +
-              fmt(`${config.name} done in ${(msg.duration_ms / 1000).toFixed(1)}s`, colors.dim) +
-              fmt(` | $${msg.total_cost_usd.toFixed(4)}`, colors.dim)
-            );
-          } else {
-            console.log(fmt(`  ${icons.cross} Error: ${msg.subtype}`, colors.error));
-          }
-          break;
-
-        case "tool_progress":
-          if (msg.elapsed_time_seconds > 2) {
-            console.log(fmt(`  [${msg.tool_name}] ${msg.elapsed_time_seconds.toFixed(0)}s...`, colors.dim));
-          }
-          break;
+  // 创建回调处理 UI 显示
+  const callbacks: AgentCallbacks = {
+    onInit: (sid) => {
+      newSessionId = sid;
+      console.log(fmt(`  ${agentIcon} ${config.name}`, colors.accent) +
+        fmt(` | Session: ${sid.slice(0, 8)}`, colors.dim));
+      console.log();
+    },
+    onText: (text) => {
+      console.log(text);
+      if (currentTranscript) {
+        currentTranscript.addAssistant(text);
       }
-    }
+    },
+    onToolUse: (toolName) => {
+      const toolIcon = getToolIcon(toolName);
+      console.log(fmt(`  ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
+      if (currentTranscript) {
+        currentTranscript.addTool(toolName, {});
+      }
+    },
+    onResult: (success, duration, cost) => {
+      console.log();
+      if (success) {
+        console.log(
+          fmt(`  ${icons.check} `, colors.success) +
+          fmt(`${config.name} done in ${(duration / 1000).toFixed(1)}s`, colors.dim) +
+          (cost ? fmt(` | $${cost.toFixed(4)}`, colors.dim) : "")
+        );
+      } else {
+        console.log(fmt(`  ${icons.cross} Agent failed`, colors.error));
+      }
+    },
+    onProgress: (toolName, elapsed) => {
+      if (elapsed > 2) {
+        console.log(fmt(`  [${toolName}] ${elapsed.toFixed(0)}s...`, colors.dim));
+      }
+    },
+  };
 
+  try {
+    await agent.execute(prompt, undefined, callbacks);
     return newSessionId;
   } catch (error) {
     console.log(
@@ -699,6 +400,7 @@ async function runQuery(prompt: string, sessionId?: string, depth: number = 0): 
 
 /**
  * 运行 Coordinator（支持多 Agent 协调）
+ * 使用 CoordinatorAgent 类
  */
 async function runCoordinator(prompt: string, sessionId?: string, depth: number = 0): Promise<string | undefined> {
   console.log();
@@ -706,110 +408,73 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
   console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));
   console.log();
 
-  try {
-    const userCwd = process.cwd();
-    let newSessionId: string | undefined;
-    let collectedText = "";  // 收集 Coordinator 的输出
-    const pendingDispatches: Array<{ agent: SubagentType; task: string }> = [];
+  let newSessionId: string | undefined;
+  let collectedText = "";
 
-    const result = query({
-      prompt,
-      options: {
-        cwd: AGENT_ROOT,
-        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-        settingSources: ["project"],
-        additionalDirectories: [userCwd],
-        mcpServers: {
-          playwright: {
-            command: "npx",
-            args: ["-y", "@playwright/mcp@latest"],
-          },
-        },
-        permissionMode: currentPermissionMode,
-        tools: { type: "preset", preset: "claude_code" },
-        resume: sessionId,
-        includePartialMessages: true,
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: buildMultiAgentSystemPrompt(userCwd),
-        },
-      },
-    });
+  // 获取 CoordinatorAgent 实例
+  const coordinator = agentRegistry.getCoordinator();
 
-    // 处理流式响应
-    for await (const msg of result) {
-      switch (msg.type) {
-        case "system":
-          if (msg.subtype === "init") {
-            newSessionId = msg.session_id;
-            // 显示当前 Agent 类型和会话 ID
-            const agentLabel = depth === 0 ? "Coordinator" : "Agent";
-            console.log(fmt(`  🎯 ${agentLabel}`, colors.accent) +
-              fmt(` | Session: ${msg.session_id.slice(0, 8)}`, colors.dim));
-            console.log();
-          }
-          break;
-
-        case "assistant":
-          const content = msg.message.content;
-          if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === "text") {
-                collectedText += block.text;
-
-                // 检测派发指令
-                const dispatch = detectDispatch(block.text);
-                if (dispatch) {
-                  pendingDispatches.push(dispatch);
-                  console.log(fmt(`  ⤷ [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task, colors.dim));
-                } else {
-                  console.log(block.text);
-                }
-
-                if (currentTranscript) {
-                  currentTranscript.addAssistant(block.text);
-                }
-              } else if (block.type === "tool_use") {
-                // 更详细的工具状态显示
-                const toolName = block.name;
-                const toolIcon = getToolIcon(toolName);
-                console.log(fmt(`  ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
-                if (currentTranscript) {
-                  currentTranscript.addTool(block.name, block.input);
-                }
-              }
-            }
-          }
-          break;
-
-        case "result":
-          console.log();
-          if (msg.subtype === "success") {
-            console.log(
-              fmt(`  ${icons.check} `, colors.success) +
-              fmt(`Coordinator done in ${(msg.duration_ms / 1000).toFixed(1)}s`, colors.dim) +
-              fmt(` | $${msg.total_cost_usd.toFixed(4)}`, colors.dim)
-            );
-          } else {
-            console.log(fmt(`  ${icons.cross} Error: ${msg.subtype}`, colors.error));
-          }
-          break;
-
-        case "tool_progress":
-          if (msg.elapsed_time_seconds > 2) {
-            console.log(fmt(`  [${msg.tool_name}] ${msg.elapsed_time_seconds.toFixed(0)}s...`, colors.dim));
-          }
-          break;
+  // 创建回调处理 UI 显示
+  const callbacks: AgentCallbacks = {
+    onInit: (sid) => {
+      newSessionId = sid;
+      const agentLabel = depth === 0 ? "Coordinator" : "Agent";
+      console.log(fmt(`  🎯 ${agentLabel}`, colors.accent) +
+        fmt(` | Session: ${sid.slice(0, 8)}`, colors.dim));
+      console.log();
+    },
+    onText: (text) => {
+      collectedText += text + "\n";
+      // 检测派发指令（用于 UI 显示）
+      const dispatch = detectDispatch(text);
+      if (dispatch) {
+        console.log(fmt(`  ⤷ [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task, colors.dim));
+      } else {
+        console.log(text);
       }
-    }
+      if (currentTranscript) {
+        currentTranscript.addAssistant(text);
+      }
+    },
+    onToolUse: (toolName, input) => {
+      const toolIcon = getToolIcon(toolName);
+      console.log(fmt(`  ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
+      if (currentTranscript) {
+        currentTranscript.addTool(toolName, input || {});
+      }
+    },
+    onResult: (success, duration, cost) => {
+      console.log();
+      if (success) {
+        console.log(
+          fmt(`  ${icons.check} `, colors.success) +
+          fmt(`Coordinator done in ${(duration / 1000).toFixed(1)}s`, colors.dim) +
+          (cost ? fmt(` | $${cost.toFixed(4)}`, colors.dim) : "")
+        );
+      } else {
+        console.log(fmt(`  ${icons.cross} Coordinator failed`, colors.error));
+      }
+    },
+    onProgress: (toolName, elapsed) => {
+      if (elapsed > 2) {
+        console.log(fmt(`  [${toolName}] ${elapsed.toFixed(0)}s...`, colors.dim));
+      }
+    },
+  };
+
+  try {
+    // 执行 Coordinator
+    await coordinator.execute(prompt, undefined, callbacks);
+
+    // 获取 Coordinator 检测到的派发指令
+    const pendingDispatches = coordinator.getPendingDispatches();
 
     // 执行收集到的派发任务
     if (pendingDispatches.length > 0 && depth < MAX_SUBAGENT_DEPTH) {
       console.log();
       console.log(fmt(`  ═══ Executing ${pendingDispatches.length} subagent(s) ═══`, colors.accent));
 
-      const subagentResults: SubagentResult[] = [];
+      const subagentResults: SubagentResultLegacy[] = [];
 
       for (const dispatch of pendingDispatches) {
         const subResult = await runSubagent(
@@ -820,6 +485,9 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
         );
         subagentResults.push(subResult);
       }
+
+      // 清除已执行的派发指令
+      coordinator.clearPendingDispatches();
 
       // 将子智能体结果反馈给 Coordinator
       if (subagentResults.length > 0 && newSessionId) {
@@ -845,10 +513,10 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
 /**
  * 构建子智能体结果反馈
  */
-function buildSubagentFeedback(results: SubagentResult[]): string {
+function buildSubagentFeedback(results: SubagentResultLegacy[]): string {
   const feedback = results.map(r => {
     const status = r.success ? "✓ Success" : "✗ Failed";
-    return `## ${SUBAGENTS[r.agent as SubagentType].name} Agent Result (${status})
+    return `## ${AGENT_CONFIGS[r.agent as SubagentType].name} Agent Result (${status})
 
 **Task:** ${r.task}
 
@@ -1001,12 +669,14 @@ async function handleInput(
 
     if (arg === "1" || arg.toLowerCase() === "safe") {
       currentPermissionMode = "acceptEdits";
+      agentRegistry.setEnvironment(AGENT_ROOT, process.cwd(), currentPermissionMode);
       console.log();
       console.log(fmt(`  ${icons.check} Switched to Safe mode`, colors.success));
       console.log(fmt(`    Auto-accept file edits, confirm Bash commands`, colors.dim));
       console.log();
     } else if (arg === "2" || arg.toLowerCase() === "unsafe") {
       currentPermissionMode = "bypassPermissions";
+      agentRegistry.setEnvironment(AGENT_ROOT, process.cwd(), currentPermissionMode);
       console.log();
       console.log(fmt(`  ${icons.check} Switched to Unsafe mode`, colors.success));
       console.log(fmt(`    Auto-accept everything (no confirmations)`, colors.dim));
@@ -1034,9 +704,11 @@ async function handleInput(
       if (!result.cancelled && result.command) {
         if (result.command.name === "safe") {
           currentPermissionMode = "acceptEdits";
+          agentRegistry.setEnvironment(AGENT_ROOT, process.cwd(), currentPermissionMode);
           console.log(fmt(`  ${icons.check} Switched to Safe mode`, colors.success));
         } else if (result.command.name === "unsafe") {
           currentPermissionMode = "bypassPermissions";
+          agentRegistry.setEnvironment(AGENT_ROOT, process.cwd(), currentPermissionMode);
           console.log(fmt(`  ${icons.check} Switched to Unsafe mode`, colors.success));
         }
         console.log();
@@ -1091,6 +763,9 @@ User request: ${message || "Analyze the attached file(s)"}`.trim();
  */
 async function interactive(): Promise<void> {
   printBanner();
+
+  // 初始化 Agent 系统
+  initializeAgents();
 
   let sessionId: string | undefined;
 
