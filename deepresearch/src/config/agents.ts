@@ -19,7 +19,7 @@ export const AGENT_CONFIGS: Record<SubagentType, AgentConfig> = {
     description: "代码阅读和理解",
     promptFile: "reader.md",
     canDispatch: false,
-    allowedTools: ["Read", "Glob", "Grep", "LSP"],
+    allowedTools: ["Read", "Glob", "Grep", "LSP", "Bash", "Skill"],
   },
   coder: {
     name: "Coder",
@@ -27,7 +27,7 @@ export const AGENT_CONFIGS: Record<SubagentType, AgentConfig> = {
     description: "代码编写和修改",
     promptFile: "coder.md",
     canDispatch: false,
-    allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "LSP", "NotebookEdit"],
+    allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "LSP", "NotebookEdit", "WebFetch", "Skill"],
   },
   reviewer: {
     name: "Reviewer",
@@ -35,7 +35,7 @@ export const AGENT_CONFIGS: Record<SubagentType, AgentConfig> = {
     description: "代码审查和质量检查",
     promptFile: "reviewer.md",
     canDispatch: false,
-    allowedTools: ["Read", "Glob", "Grep", "Bash", "LSP"],
+    allowedTools: ["Read", "Glob", "Grep", "Bash", "LSP", "Skill"],
   },
 };
 
@@ -91,8 +91,18 @@ export const AGENT_KEYWORDS: Record<SubagentType, string[]> = {
 
 // Skill 到 Agent 的映射
 export const SKILL_AGENT_MAP: Record<string, SubagentType> = {
-  "code-review": "reviewer",
-  "git-commit": "coder",
+  // Reader Skills
   "pdf-analyze": "reader",
+
+  // Coder Skills
+  "git-commit": "coder",
+  "doc-generate": "coder",
+
+  // Reviewer Skills
+  "code-review": "reviewer",
+
+  // Coordinator Skills (需要多Agent协调)
   "debug-complex": "coordinator",
+  "web-scrape": "coordinator",
+  "deep-research": "coordinator",
 };

@@ -10,15 +10,15 @@ export const TOOL_WHITELIST: Record<SubagentType, string[]> = {
     "send_message", "broadcast", "dispatch_to_agent", "read_shared", "write_shared",
   ],
   reader: [
-    "Read", "Glob", "Grep", "LSP",
+    "Read", "Glob", "Grep", "LSP", "Bash", "Skill",
     "send_message", "read_shared", "write_shared",
   ],
   coder: [
-    "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LSP", "NotebookEdit",
+    "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LSP", "NotebookEdit", "WebFetch", "Skill",
     "send_message", "read_shared", "write_shared",
   ],
   reviewer: [
-    "Read", "Glob", "Grep", "Bash", "LSP",
+    "Read", "Glob", "Grep", "Bash", "LSP", "Skill",
     "send_message", "read_shared", "write_shared",
   ],
 };
