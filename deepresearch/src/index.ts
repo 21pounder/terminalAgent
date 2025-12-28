@@ -34,6 +34,8 @@ import {
   FileItem,
   showCursor,
   pickCommand,
+  logoMinimal,
+  welcomeBanner,
 } from "./ui/index.js";
 
 import { Transcript } from "./utils/index.js";
@@ -95,16 +97,15 @@ async function runSubagent(
   const config = AGENT_CONFIGS[agentType];
 
   // Agent 类型对应的图标
-  const agentIcon = AGENT_ICONS[agentType] || "🤖";
+  const agentIcon = AGENT_ICONS[agentType] || "*";
 
   console.log();
-  console.log(fmt(`  ┌─ ${agentIcon} ${config.name} ─────────────────────`, colors.tiffany));
-  console.log(fmt(`  │ ${task.slice(0, 60)}${task.length > 60 ? '...' : ''}`, colors.dim));
+  console.log(fmt(`  + ${config.name}`, colors.tiffany));
+  console.log(fmt(`    ${task.slice(0, 70)}${task.length > 70 ? '...' : ''}`, colors.dim));
 
   // 深度检查
   if (depth >= MAX_SUBAGENT_DEPTH) {
-    console.log(fmt(`  │ [!] Max depth reached, skipping`, colors.error));
-    console.log(fmt(`  └────────────────────────────────────────`, colors.tiffany));
+    console.log(fmt(`    x Max depth reached, skipping`, colors.error));
     return {
       agent: agentType,
       task,
@@ -126,19 +127,19 @@ async function runSubagent(
       // 缩进显示子智能体输出
       const lines = text.split('\n');
       for (const line of lines) {
-        console.log(fmt(`  │ `, colors.tiffany) + line);
+        console.log(fmt(`    `, colors.gray) + line);
       }
     },
     onToolUse: (toolName) => {
       const toolIcon = getToolIcon(toolName);
-      console.log(fmt(`  │ ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
+      console.log(fmt(`    ${toolIcon} `, colors.tiffany) + fmt(toolName, colors.accent));
     },
     onResult: (success, duration, cost) => {
       // 结果在最后统一处理
     },
     onProgress: (toolName, elapsed) => {
       if (elapsed > 2) {
-        console.log(fmt(`  │ [${toolName}] ${elapsed.toFixed(0)}s...`, colors.dim));
+        console.log(fmt(`    : ${toolName}...${elapsed.toFixed(0)}s`, colors.dim));
       }
     },
   };
@@ -148,7 +149,7 @@ async function runSubagent(
     result = await agent.execute(task, context, callbacks);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.log(fmt(`  │ [!] Error: ${errorMsg}`, colors.error));
+    console.log(fmt(`    x Error: ${errorMsg}`, colors.error));
     result = {
       agent: agentType,
       task,
@@ -159,7 +160,7 @@ async function runSubagent(
   }
 
   const duration = Date.now() - startTime;
-  console.log(fmt(`  └─ Done in ${(duration / 1000).toFixed(1)}s ───────────────────`, colors.tiffany));
+  console.log(fmt(`    v Done in ${(duration / 1000).toFixed(1)}s`, colors.success));
 
   return {
     agent: result.agent,
@@ -201,6 +202,8 @@ const colors = {
   bold: theme.bold,
   success: theme.success,
   error: theme.error,
+  lightGray: theme.lightGray,
+  gray: theme.gray,
 };
 
 /**
@@ -212,54 +215,29 @@ function getToolIcon(toolName: string): string {
 }
 
 /**
- * 打印 Banner
+ * 打印 Banner - 新设计
  */
 function printBanner(): void {
-  const width = 50;
-  const inner = width - 2;
-
   console.log();
-  console.log(
-    fmt(borders.topLeft, colors.tiffany) +
-    fmt(borders.horizontal.repeat(inner), colors.tiffany) +
-    fmt(borders.topRight, colors.tiffany)
-  );
 
-  const title = `${icons.sparkle} Terminal Agent v${VERSION}`;
-  const titlePad = Math.floor((inner - title.length + 10) / 2);
-  console.log(
-    fmt(borders.vertical, colors.tiffany) +
-    " ".repeat(titlePad) +
-    fmt(icons.sparkle, colors.accent) +
-    fmt(` Terminal Agent v${VERSION}`, colors.white, colors.bold) +
-    " ".repeat(inner - titlePad - title.length + 10) +
-    fmt(borders.vertical, colors.tiffany)
-  );
-
-  const subtitle = "Powered by Claude Agent SDK";
-  const subPad = Math.floor((inner - subtitle.length) / 2);
-  console.log(
-    fmt(borders.vertical, colors.tiffany) +
-    " ".repeat(subPad) +
-    fmt(subtitle, colors.dim) +
-    " ".repeat(inner - subPad - subtitle.length) +
-    fmt(borders.vertical, colors.tiffany)
-  );
-
-  console.log(
-    fmt(borders.bottomLeft, colors.tiffany) +
-    fmt(borders.horizontal.repeat(inner), colors.tiffany) +
-    fmt(borders.bottomRight, colors.tiffany)
-  );
-
+  // 欢迎横幅
+  console.log(welcomeBanner(VERSION));
   console.log();
-  console.log(fmt(`  ${icons.folder} `, colors.accent) + fmt(process.cwd(), colors.dim));
+
+  // ASCII Art Logo - 使用蒂芙尼蓝
+  const logoLines = logoMinimal.split("\n");
+  for (const line of logoLines) {
+    console.log(fmt(line, colors.tiffany));
+  }
   console.log();
-  console.log(fmt("  Shortcuts:", colors.white));
-  console.log(fmt(`    ${icons.chevronRight} `, colors.tiffany) + fmt("/", colors.accent) + fmt(" - Command menu (Skills)", colors.dim));
-  console.log(fmt(`    ${icons.chevronRight} `, colors.tiffany) + fmt("@", colors.accent) + fmt(" - File browser", colors.dim));
-  console.log(fmt(`    ${icons.chevronRight} `, colors.tiffany) + fmt("exit", colors.accent) + fmt(" - Quit", colors.dim));
-  console.log(fmt(`    ${icons.chevronRight} `, colors.tiffany) + fmt("clear", colors.accent) + fmt(" - New session", colors.dim));
+
+  // 描述信息
+  console.log(fmt("Your AI assistant for coding tasks.", colors.lightGray));
+  console.log(fmt("Ask me any questions. Type 'exit' or 'quit' to end.", colors.dim));
+  console.log();
+
+  // 当前目录
+  console.log(fmt(icons.prompt, colors.accent) + " " + fmt(process.cwd(), colors.dim));
   console.log();
 }
 
@@ -321,8 +299,7 @@ async function runAgent(
   depth: number = 0
 ): Promise<string | undefined> {
   console.log();
-  console.log(fmt(`  ${icons.sparkle} Processing...`, colors.dim));
-  console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));
+  console.log(fmt(`: Processing...`, colors.dim));
   console.log();
 
   const config = AGENT_CONFIGS[agentType];
@@ -337,8 +314,8 @@ async function runAgent(
   const callbacks: AgentCallbacks = {
     onInit: (sid) => {
       newSessionId = sid;
-      console.log(fmt(`  ${agentIcon} ${config.name}`, colors.accent) +
-        fmt(` | Session: ${sid.slice(0, 8)}`, colors.dim));
+      console.log(fmt(`> Task: `, colors.accent) + fmt(config.name, colors.white));
+      console.log(fmt(`  Session: ${sid.slice(0, 8)}`, colors.dim));
       console.log();
     },
     onText: (text) => {
@@ -346,7 +323,7 @@ async function runAgent(
       // 检测派发指令（用于 UI 显示）
       const dispatch = detectDispatch(text);
       if (dispatch) {
-        console.log(fmt(`  ⤷ [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task.slice(0, 60) + "...", colors.dim));
+        console.log(fmt(`  > [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task.slice(0, 60) + "...", colors.dim));
       } else {
         console.log(text);
       }
@@ -365,17 +342,17 @@ async function runAgent(
       console.log();
       if (success) {
         console.log(
-          fmt(`  ${icons.check} `, colors.success) +
-          fmt(`${config.name} done in ${(duration / 1000).toFixed(1)}s`, colors.dim) +
+          fmt(`v Completed `, colors.success) +
+          fmt(`| ${config.name} | ${(duration / 1000).toFixed(1)}s`, colors.dim) +
           (cost ? fmt(` | $${cost.toFixed(4)}`, colors.dim) : "")
         );
       } else {
-        console.log(fmt(`  ${icons.cross} Agent failed`, colors.error));
+        console.log(fmt(`x Failed`, colors.error));
       }
     },
     onProgress: (toolName, elapsed) => {
       if (elapsed > 2) {
-        console.log(fmt(`  [${toolName}] ${elapsed.toFixed(0)}s...`, colors.dim));
+        console.log(fmt(`  : ${toolName}...${elapsed.toFixed(0)}s`, colors.dim));
       }
     },
   };
@@ -388,7 +365,8 @@ async function runAgent(
 
     if (dispatches.length > 0 && depth < MAX_SUBAGENT_DEPTH) {
       console.log();
-      console.log(fmt(`  ═══ Executing ${dispatches.length} dispatched agent(s) ═══`, colors.accent));
+      console.log(fmt(`> Executing ${dispatches.length} dispatched agent(s)`, colors.accent));
+      console.log();
 
       for (const dispatch of dispatches) {
         const subResult = await runSubagent(
@@ -418,7 +396,7 @@ async function runAgent(
     return newSessionId;
   } catch (error) {
     console.log(
-      fmt(`  ${icons.cross} Error: `, colors.error) +
+      fmt(`x Error: `, colors.error) +
       fmt(error instanceof Error ? error.message : String(error), colors.error)
     );
     return sessionId;
@@ -453,7 +431,7 @@ async function runQuery(prompt: string, sessionId?: string, depth: number = 0): 
   const agentType = detectTaskType(prompt);
 
   // 调试：显示路由决策
-  console.log(fmt(`  [Router] Selected agent: ${agentType}`, colors.dim));
+  console.log(fmt(`[Router] -> ${agentType}`, colors.dim));
 
   // 如果是 Coordinator，保持原有的多 Agent 协调逻辑
   if (agentType === "coordinator") {
@@ -470,8 +448,7 @@ async function runQuery(prompt: string, sessionId?: string, depth: number = 0): 
  */
 async function runCoordinator(prompt: string, sessionId?: string, depth: number = 0): Promise<string | undefined> {
   console.log();
-  console.log(fmt(`  ${icons.sparkle} Processing...`, colors.dim));
-  console.log(fmt("  " + borders.horizontal.repeat(40), colors.dim));
+  console.log(fmt(`: Processing...`, colors.dim));
   console.log();
 
   let newSessionId: string | undefined;
@@ -485,8 +462,8 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
     onInit: (sid) => {
       newSessionId = sid;
       const agentLabel = depth === 0 ? "Coordinator" : "Agent";
-      console.log(fmt(`  🎯 ${agentLabel}`, colors.accent) +
-        fmt(` | Session: ${sid.slice(0, 8)}`, colors.dim));
+      console.log(fmt(`> Task: `, colors.accent) + fmt(agentLabel, colors.white));
+      console.log(fmt(`  Session: ${sid.slice(0, 8)}`, colors.dim));
       console.log();
     },
     onText: (text) => {
@@ -494,7 +471,7 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
       // 检测派发指令（用于 UI 显示）
       const dispatch = detectDispatch(text);
       if (dispatch) {
-        console.log(fmt(`  ⤷ [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task, colors.dim));
+        console.log(fmt(`  > [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task, colors.dim));
       } else {
         console.log(text);
       }
@@ -513,17 +490,17 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
       console.log();
       if (success) {
         console.log(
-          fmt(`  ${icons.check} `, colors.success) +
-          fmt(`Coordinator done in ${(duration / 1000).toFixed(1)}s`, colors.dim) +
+          fmt(`v Completed `, colors.success) +
+          fmt(`| Coordinator | ${(duration / 1000).toFixed(1)}s`, colors.dim) +
           (cost ? fmt(` | $${cost.toFixed(4)}`, colors.dim) : "")
         );
       } else {
-        console.log(fmt(`  ${icons.cross} Coordinator failed`, colors.error));
+        console.log(fmt(`x Coordinator failed`, colors.error));
       }
     },
     onProgress: (toolName, elapsed) => {
       if (elapsed > 2) {
-        console.log(fmt(`  [${toolName}] ${elapsed.toFixed(0)}s...`, colors.dim));
+        console.log(fmt(`  : ${toolName}...${elapsed.toFixed(0)}s`, colors.dim));
       }
     },
   };
@@ -538,7 +515,8 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
     // 执行收集到的派发任务
     if (pendingDispatches.length > 0 && depth < MAX_SUBAGENT_DEPTH) {
       console.log();
-      console.log(fmt(`  ═══ Executing ${pendingDispatches.length} subagent(s) ═══`, colors.accent));
+      console.log(fmt(`> Executing ${pendingDispatches.length} subagent(s)`, colors.accent));
+      console.log();
 
       const subagentResults: SubagentResultLegacy[] = [];
 
@@ -559,7 +537,7 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
       if (subagentResults.length > 0 && newSessionId) {
         const feedbackPrompt = buildSubagentFeedback(subagentResults);
         console.log();
-        console.log(fmt(`  ═══ Coordinator processing results ═══`, colors.accent));
+        console.log(fmt(`> Coordinator processing results`, colors.accent));
 
         // 递归调用，让 Coordinator 处理子智能体结果
         return await runQuery(feedbackPrompt, newSessionId, depth + 1);
@@ -569,7 +547,7 @@ async function runCoordinator(prompt: string, sessionId?: string, depth: number 
     return newSessionId;
   } catch (error) {
     console.log(
-      fmt(`  ${icons.cross} Error: `, colors.error) +
+      fmt(`x Error: `, colors.error) +
       fmt(error instanceof Error ? error.message : String(error), colors.error)
     );
     return sessionId;
@@ -674,28 +652,28 @@ function buildCommandList(): Command[] {
  */
 function printHelp(): void {
   console.log();
-  console.log(fmt(`${icons.sparkle} Help`, colors.accent, colors.bold));
+  console.log(fmt(`* Help`, colors.accent, colors.bold));
   console.log();
 
-  console.log(fmt("  Commands:", colors.tiffany));
-  console.log(fmt(`    /help     `, colors.accent) + fmt("- Show this help", colors.dim));
-  console.log(fmt(`    /mode     `, colors.accent) + fmt("- Switch permission mode", colors.dim));
-  console.log(fmt(`    /clear    `, colors.accent) + fmt("- Start new session", colors.dim));
-  console.log(fmt(`    /exit     `, colors.accent) + fmt("- Exit program", colors.dim));
+  console.log(fmt("Commands:", colors.tiffany));
+  console.log(fmt(`  /help     `, colors.accent) + fmt("Show this help", colors.dim));
+  console.log(fmt(`  /mode     `, colors.accent) + fmt("Switch permission mode", colors.dim));
+  console.log(fmt(`  /clear    `, colors.accent) + fmt("Start new session", colors.dim));
+  console.log(fmt(`  /exit     `, colors.accent) + fmt("Exit program", colors.dim));
   console.log();
 
-  console.log(fmt("  File Reference:", colors.tiffany));
-  console.log(fmt(`    @         `, colors.accent) + fmt("- Open file browser", colors.dim));
-  console.log(fmt(`    @file.ts  `, colors.accent) + fmt("- Attach file to context", colors.dim));
+  console.log(fmt("File Reference:", colors.tiffany));
+  console.log(fmt(`  @         `, colors.accent) + fmt("Open file browser", colors.dim));
+  console.log(fmt(`  @file.ts  `, colors.accent) + fmt("Attach file to context", colors.dim));
   console.log();
 
-  console.log(fmt("  Skills:", colors.tiffany));
-  console.log(fmt(`    Skills are loaded from .claude/skills/`, colors.dim));
-  console.log(fmt(`    Use /skill-name or just ask naturally`, colors.dim));
+  console.log(fmt("Skills:", colors.tiffany));
+  console.log(fmt(`  Skills are loaded from .claude/skills/`, colors.dim));
+  console.log(fmt(`  Use /skill-name or just ask naturally`, colors.dim));
   console.log();
 
-  console.log(fmt("  Agent Mode:", colors.tiffany));
-  console.log(fmt(`    Just type your question and press Enter`, colors.dim));
+  console.log(fmt("Usage:", colors.tiffany));
+  console.log(fmt(`  Just type your question and press Enter`, colors.dim));
   console.log();
 }
 
@@ -837,14 +815,14 @@ async function interactive(): Promise<void> {
 
   // 初始化会话记录
   currentTranscript = new Transcript(undefined, path.join(AGENT_ROOT, "data", "logs"));
-  console.log(fmt(`  Transcript: ${currentTranscript.getSessionId()}`, colors.dim));
+  console.log(fmt(`Session: ${currentTranscript.getSessionId()}`, colors.dim));
   console.log();
 
   try {
     while (true) {
       const commands = buildCommandList();
       const smartInput = new SmartInput({
-        prompt: fmt(`  ${icons.chevronRight} `, colors.accent),
+        prompt: fmt(`${icons.prompt} `, colors.accent),
         commands,
       });
 
@@ -869,7 +847,7 @@ async function interactive(): Promise<void> {
   } catch (error) {
     showCursor();
     console.error(
-      fmt(`\n  ${icons.cross} Fatal: `, colors.error) +
+      fmt(`\nx Fatal: `, colors.error) +
       fmt(error instanceof Error ? error.message : String(error), colors.error)
     );
   }
@@ -878,11 +856,11 @@ async function interactive(): Promise<void> {
   if (currentTranscript) {
     const textPath = currentTranscript.saveAsText();
     const jsonPath = currentTranscript.saveAsJson();
-    console.log(fmt(`  Saved: ${textPath}`, colors.dim));
+    console.log(fmt(`Saved: ${textPath}`, colors.dim));
   }
 
   console.log();
-  console.log(fmt(`  ${icons.sparkle} Goodbye!`, colors.tiffany));
+  console.log(fmt(`* Goodbye!`, colors.tiffany));
   console.log();
 }
 

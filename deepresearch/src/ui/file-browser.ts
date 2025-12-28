@@ -172,7 +172,7 @@ export class FileBrowser {
   }
 
   private getFileIcon(item: FileItem): string {
-    return item.isDirectory ? "[D]" : "[F]";
+    return item.isDirectory ? "+" : "-";
   }
 
   private render(): void {
@@ -184,13 +184,13 @@ export class FileBrowser {
     // 标题 - 当前路径
     const relativeCurrent = path.relative(this.basePath, this.currentPath) || ".";
     const pathDisplay = relativeCurrent.length > W - 12 ? ".." + relativeCurrent.slice(-(W - 14)) : relativeCurrent;
-    const titleContent = " [D] " + pathDisplay + " ";
+    const titleContent = " + " + pathDisplay + " ";
     const titlePad = W - 2 - titleContent.length;
     const topLine = borders.topLeft + titleContent + borders.horizontal.repeat(Math.max(0, titlePad)) + borders.topRight;
     lines.push(fmt(topLine, theme.tiffany));
 
     // 搜索框
-    const searchPrefix = this.isSearchMode ? "[?] " : "@ ";
+    const searchPrefix = this.isSearchMode ? "? " : "@ ";
     const searchContent = searchPrefix + this.filter + "_";
     const searchPad = W - 4 - searchContent.length + 1;
     lines.push(
@@ -201,7 +201,11 @@ export class FileBrowser {
     );
 
     // 分隔线
-    lines.push(fmt(borders.vertical + borders.horizontal.repeat(W - 2) + borders.vertical, theme.darkGray));
+    lines.push(
+      fmt(borders.vertical, theme.tiffany) +
+      fmt(borders.horizontal.repeat(W - 2), theme.darkGray) +
+      fmt(borders.vertical, theme.tiffany)
+    );
 
     // 文件列表
     const visibleItems = this.filteredItems.slice(0, this.maxVisible);
@@ -259,10 +263,14 @@ export class FileBrowser {
     }
 
     // 底部分隔线
-    lines.push(fmt(borders.vertical + borders.horizontal.repeat(W - 2) + borders.vertical, theme.darkGray));
+    lines.push(
+      fmt(borders.vertical, theme.tiffany) +
+      fmt(borders.horizontal.repeat(W - 2), theme.darkGray) +
+      fmt(borders.vertical, theme.tiffany)
+    );
 
     // 提示行
-    const hint = "Arrows:Nav  Enter:Select  Esc:Cancel";
+    const hint = "Arrows: Nav | Enter: Select | Esc: Cancel";
     const hintPad = Math.floor((W - 2 - hint.length) / 2);
     lines.push(
       fmt(borders.vertical, theme.tiffany) +
@@ -271,7 +279,11 @@ export class FileBrowser {
     );
 
     // 底部边框
-    lines.push(fmt(borders.bottomLeft + borders.horizontal.repeat(W - 2) + borders.bottomRight, theme.tiffany));
+    lines.push(
+      fmt(borders.bottomLeft, theme.tiffany) +
+      fmt(borders.horizontal.repeat(W - 2), theme.tiffany) +
+      fmt(borders.bottomRight, theme.tiffany)
+    );
 
     // 输出
     hideCursor();

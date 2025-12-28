@@ -45,8 +45,8 @@ export class CommandPicker {
   private renderedLines: number = 0;
 
   // 固定宽度
-  private readonly WIDTH = 44;
-  private readonly NAME_WIDTH = 12;
+  private readonly WIDTH = 48;
+  private readonly NAME_WIDTH = 14;
 
   constructor(options: CommandPickerOptions) {
     this.commands = options.commands;
@@ -82,12 +82,22 @@ export class CommandPicker {
     lines.push(fmt(topLine, theme.tiffany));
 
     // 过滤输入行
-    const filterDisplay = "/" + this.filter + "_";
-    const filterLine = borders.vertical + " " + fmt(filterDisplay, theme.accent) + " ".repeat(W - 4 - filterDisplay.length) + borders.vertical;
-    lines.push(fmt(borders.vertical, theme.tiffany) + " " + fmt("/" + this.filter, theme.accent) + fmt("_", theme.dim) + " ".repeat(Math.max(0, W - 5 - this.filter.length)) + fmt(borders.vertical, theme.tiffany));
+    const filterLine = " /" + this.filter;
+    const cursor = "_";
+    lines.push(
+      fmt(borders.vertical, theme.tiffany) +
+      fmt(filterLine, theme.accent) +
+      fmt(cursor, theme.dim) +
+      " ".repeat(Math.max(0, W - 3 - filterLine.length - 1)) +
+      fmt(borders.vertical, theme.tiffany)
+    );
 
     // 分隔线
-    lines.push(fmt(borders.vertical + borders.horizontal.repeat(W - 2) + borders.vertical, theme.darkGray));
+    lines.push(
+      fmt(borders.vertical, theme.tiffany) +
+      fmt(borders.horizontal.repeat(W - 2), theme.darkGray) +
+      fmt(borders.vertical, theme.tiffany)
+    );
 
     // 命令列表
     const visibleCommands = this.filteredCommands.slice(0, this.maxVisible);
@@ -95,7 +105,13 @@ export class CommandPicker {
     if (visibleCommands.length === 0) {
       const msg = "No matching commands";
       const pad = Math.floor((W - 2 - msg.length) / 2);
-      lines.push(fmt(borders.vertical, theme.tiffany) + " ".repeat(pad) + fmt(msg, theme.dim) + " ".repeat(W - 2 - pad - msg.length) + fmt(borders.vertical, theme.tiffany));
+      lines.push(
+        fmt(borders.vertical, theme.tiffany) +
+        " ".repeat(pad) +
+        fmt(msg, theme.dim) +
+        " ".repeat(W - 2 - pad - msg.length) +
+        fmt(borders.vertical, theme.tiffany)
+      );
     } else {
       for (let i = 0; i < visibleCommands.length; i++) {
         const cmd = visibleCommands[i];
@@ -103,9 +119,10 @@ export class CommandPicker {
 
         const prefix = isSelected ? ">" : " ";
         const name = ("/" + cmd.name).padEnd(this.NAME_WIDTH);
-        const desc = cmd.description;
         const descWidth = W - 6 - this.NAME_WIDTH;
-        const descTrunc = desc.length > descWidth ? desc.slice(0, descWidth - 2) + ".." : desc.padEnd(descWidth);
+        const descTrunc = cmd.description.length > descWidth
+          ? cmd.description.slice(0, descWidth - 2) + ".."
+          : cmd.description.padEnd(descWidth);
 
         let content: string;
         if (isSelected) {
@@ -114,20 +131,38 @@ export class CommandPicker {
           content = prefix + " " + fmt(name, theme.tiffanyDim) + fmt(descTrunc, theme.dim);
         }
 
-        lines.push(fmt(borders.vertical, theme.tiffany) + " " + content + " " + fmt(borders.vertical, theme.tiffany));
+        lines.push(
+          fmt(borders.vertical, theme.tiffany) +
+          " " + content + " " +
+          fmt(borders.vertical, theme.tiffany)
+        );
       }
     }
 
     // 底部分隔线
-    lines.push(fmt(borders.vertical + borders.horizontal.repeat(W - 2) + borders.vertical, theme.darkGray));
+    lines.push(
+      fmt(borders.vertical, theme.tiffany) +
+      fmt(borders.horizontal.repeat(W - 2), theme.darkGray) +
+      fmt(borders.vertical, theme.tiffany)
+    );
 
     // 提示行
-    const hint = "Up/Down:Nav  Enter:Select  Esc:Cancel";
+    const hint = "Up/Down: Nav | Enter: Select | Esc: Cancel";
     const hintPad = Math.floor((W - 2 - hint.length) / 2);
-    lines.push(fmt(borders.vertical, theme.tiffany) + " ".repeat(hintPad) + fmt(hint, theme.dim) + " ".repeat(W - 2 - hintPad - hint.length) + fmt(borders.vertical, theme.tiffany));
+    lines.push(
+      fmt(borders.vertical, theme.tiffany) +
+      " ".repeat(hintPad) +
+      fmt(hint, theme.dim) +
+      " ".repeat(W - 2 - hintPad - hint.length) +
+      fmt(borders.vertical, theme.tiffany)
+    );
 
     // 底部边框
-    lines.push(fmt(borders.bottomLeft + borders.horizontal.repeat(W - 2) + borders.bottomRight, theme.tiffany));
+    lines.push(
+      fmt(borders.bottomLeft, theme.tiffany) +
+      fmt(borders.horizontal.repeat(W - 2), theme.tiffany) +
+      fmt(borders.bottomRight, theme.tiffany)
+    );
 
     // 输出
     hideCursor();
