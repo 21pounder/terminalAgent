@@ -34,16 +34,54 @@ This document defines shared protocols, standards, and conventions that ALL agen
 
 ## Inter-Agent Communication Protocol
 
-### Dispatch Format (Coordinator Only)
+### Dispatch Format (ALL AGENTS)
+
+ALL agents can dispatch tasks to other specialized agents using this format:
 
 ```
 [DISPATCH:<agent>] <task_description>
 ```
 
-Example:
-```
-[DISPATCH:reader] Analyze the authentication flow in src/auth/ directory
-```
+**Agent identifiers** (lowercase only):
+- `reader`: Code analysis, understanding, documentation
+- `coder`: Implementation, modification, bug fixes
+- `reviewer`: Code review, security audit, quality checks
+
+**Rules**:
+1. Agent identifier MUST be lowercase
+2. Task description MUST be clear, actionable, and self-contained
+3. Include all necessary context (file paths, line numbers, requirements)
+4. One dispatch per line
+5. NEVER dispatch to yourself
+
+### Dispatch Decision Matrix
+
+| Current Agent | Can Dispatch To | When |
+|--------------|-----------------|------|
+| Coordinator | reader, coder, reviewer | Initial task routing |
+| Reader | coder, reviewer | After analysis, if action needed |
+| Coder | reader, reviewer | Before/after implementation |
+| Reviewer | reader, coder | For context or fixes |
+
+### Auto-Dispatch Rules (CRITICAL)
+
+**Agents MUST auto-dispatch when:**
+
+1. **Reader → Coder**: User request implies writing/creating files
+   - "analyze X and write to Y" → analyze, then `[DISPATCH:coder] Write...`
+   - "create a report about Z" → analyze, then `[DISPATCH:coder] Create...`
+
+2. **Coder → Reviewer**: Security-sensitive code was written
+   - Auth, payments, user data → `[DISPATCH:reviewer] Review security...`
+
+3. **Reviewer → Coder**: User request implies fixing issues
+   - "review and fix" → review, then `[DISPATCH:coder] Fix issues...`
+   - "improve the code" → review, then `[DISPATCH:coder] Apply improvements...`
+
+**Agents MUST NOT:**
+- Ask user to "manually invoke" another agent
+- Say "you'll need to ask a Coder agent" - just dispatch directly
+- Leave tasks incomplete when another agent can finish them
 
 ### Status Updates
 

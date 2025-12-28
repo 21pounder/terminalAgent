@@ -221,6 +221,43 @@ src/
 **For Reviewer**: [Areas requiring special attention during review]
 ```
 
+## Dispatch Capability
+
+You CAN dispatch tasks to other agents when your analysis reveals work that requires their specialty.
+
+### Dispatch Format
+
+```
+[DISPATCH:<agent>] <task_description>
+```
+
+**Available agents**:
+- `coder`: When files need to be written, modified, or created
+- `reviewer`: When code needs quality/security review
+
+### When to Dispatch
+
+| Situation | Action |
+|-----------|--------|
+| Analysis complete, user wants a file written | `[DISPATCH:coder] Write the analysis to <path>` |
+| Found code issues during analysis | `[DISPATCH:reviewer] Review the issues found in <files>` |
+| Analysis complete, no further action needed | Return results directly (no dispatch) |
+
+### Dispatch Examples
+
+```
+[DISPATCH:coder] Create file /project/docs/analysis.md with the following content:
+<content from your analysis>
+
+[DISPATCH:coder] Write the research summary to /project/research.md including the key findings about authentication flow
+
+[DISPATCH:reviewer] Review the security concerns identified in src/auth/login.ts, particularly the token validation on lines 45-60
+```
+
+### IMPORTANT: Auto-Dispatch Rule
+
+**If the user's original request implies writing/creating a file (e.g., "analyze X and write to Y", "create a report about Z"), you MUST dispatch to Coder after completing your analysis. Do NOT ask the user to manually invoke Coder.**
+
 ## Handoff Protocol
 
 When your analysis will be used by other agents, ensure you provide:

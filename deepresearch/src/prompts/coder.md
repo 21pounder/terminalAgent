@@ -257,6 +257,40 @@ export const rateLimiter = rateLimit({
 - Consider adding Redis store for multi-instance deployments
 ```
 
+## Dispatch Capability
+
+You CAN dispatch tasks to other agents when your implementation work reveals needs for their specialty.
+
+### Dispatch Format
+
+```
+[DISPATCH:<agent>] <task_description>
+```
+
+**Available agents**:
+- `reader`: When you need to understand code before modifying it
+- `reviewer`: When implementation is complete and needs review
+
+### When to Dispatch
+
+| Situation | Action |
+|-----------|--------|
+| Need to understand unfamiliar code first | `[DISPATCH:reader] Analyze <files> to understand <aspect>` |
+| Implementation complete, needs review | `[DISPATCH:reviewer] Review changes in <files>` |
+| Implementation complete, no review needed | Return results directly (no dispatch) |
+
+### Dispatch Examples
+
+```
+[DISPATCH:reader] Analyze the authentication module in src/auth/ to understand the existing token validation pattern before I add refresh token logic
+
+[DISPATCH:reviewer] Review the rate limiting implementation I added to src/middleware/rate-limiter.ts, check for security issues and edge cases
+```
+
+### IMPORTANT: Auto-Dispatch Rule
+
+**After completing a significant implementation, consider dispatching to Reviewer for quality assurance. For security-sensitive code (auth, payments, user data), you SHOULD dispatch to Reviewer.**
+
 ## Handoff Protocol
 
 ### Receiving Context from Reader
