@@ -4,27 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Terminal Coding Agent is a CLI-based multi-agent coding assistant powered by the Claude Agent SDK. It wraps the SDK's `query()` function with a custom terminal UI featuring:
+Terminal Coding Agent (v5.0) is a CLI-based multi-agent coding assistant powered by the Claude Agent SDK. It wraps the SDK's `query()` function with a custom terminal UI featuring:
 - `/` command menu for invoking Skills
 - `@` file browser for attaching files to context
-- Session persistence across queries
-- Smart routing to specialized agents (Reader, Coder, Reviewer)
+- Smart routing to specialized agents (Reader, Coder, Reviewer, Coordinator)
+- Inter-agent communication via message bus and shared context
+- Multiple execution modes: single, parallel, react, coordinator
 
-The agent spawns Claude Code as a subprocess and cannot run inside Claude Code itself.
+**Important**: The agent spawns Claude Code as a subprocess and cannot run inside Claude Code itself.
 
 ## Commands
 
 ```bash
 # From repo root
-npm run install:all    # Install all dependencies
+npm run install:all    # Install all dependencies (into deepresearch/)
 npm run dev            # Development (tsx src/index.ts)
 npm run build          # TypeScript compilation
 npm start              # Run compiled output
 
+# From deepresearch/ directory
+npm run test:ui        # Test UI components
+
 # Global CLI (after npm link in deepresearch/)
 agent                  # Interactive mode
 agent "your question"  # Single query
-agent /commit          # Invoke a skill
+agent /commit          # Invoke a skill directly
 ```
 
 ## Architecture
@@ -32,59 +36,91 @@ agent /commit          # Invoke a skill
 ```
 deepresearch/
 ├── src/
-│   ├── index.ts              # Main entry - SDK query loop, agent routing
+│   ├── index.ts                  # Main entry, input loop, runQuery/runCoordinator
+│   ├── agents/                   # Agent classes
+│   │   ├── base.ts               # BaseAgent abstract class (SDK integration)
+│   │   ├── types.ts              # SubagentType, AgentConfig, AgentResult
+│   │   ├── coordinator.ts        # Multi-agent dispatch, [DISPATCH:agent] parsing
+│   │   ├── reader.ts             # Code reading and analysis
+│   │   ├── coder.ts              # Code writing and modification
+│   │   └── reviewer.ts           # Code review and quality checks
+│   ├── core/
+│   │   ├── router.ts             # Router class - keyword matching, skill→agent mapping
+│   │   ├── session.ts            # Session management
+│   │   └── permissions.ts        # Permission mode handling
+│   ├── runtime/
+│   │   ├── bus.ts                # MessageBus - inter-agent pub/sub communication
+│   │   ├── shared.ts             # SharedContext - cross-agent state
+│   │   ├── pool.ts               # AgentPool - task queue and parallel execution
+│   │   ├── orchestrator.ts       # Orchestrator - execution mode coordination
+│   │   └── react.ts              # ReAct executor for multi-step reasoning
+│   ├── config/
+│   │   ├── agents.ts             # AGENT_CONFIGS, AGENT_KEYWORDS, SKILL_AGENT_MAP
+│   │   ├── constants.ts          # VERSION, MAX_SUBAGENT_DEPTH, DEFAULT_MODEL
+│   │   └── tools.ts              # MCP_SERVERS configuration
 │   ├── ui/
-│   │   ├── theme.ts          # ANSI colors, icons, box drawing helpers
-│   │   ├── commands.ts       # CommandPicker - "/" command menu
-│   │   ├── file-browser.ts   # FileBrowser - "@" file selection
-│   │   └── smart-input.ts    # SmartInput - unified input with triggers
-│   ├── prompts/              # Agent-specific system prompts
-│   │   ├── coordinator.md    # Task decomposition, multi-agent dispatch
-│   │   ├── reader.md         # Code reading and analysis
-│   │   ├── coder.md          # Code writing and modification
-│   │   └── reviewer.md       # Code review and quality checks
+│   │   ├── smart-input.ts        # SmartInput - main input with "/" and "@" triggers
+│   │   ├── commands.ts           # CommandPicker - arrow-key navigable "/" menu
+│   │   ├── file-browser.ts       # FileBrowser - "@" file selection
+│   │   └── theme.ts              # ANSI colors, icons, box drawing
+│   ├── tools/
+│   │   ├── message.ts            # MessageTool - agent messaging wrapper
+│   │   ├── context.ts            # ContextTool - shared context wrapper
+│   │   └── dispatch.ts           # Dispatch utilities
 │   └── utils/
-│       ├── tracker.ts        # Subagent execution tracking
-│       ├── message-handler.ts # SDK message processing
-│       └── transcript.ts     # Session logging (text + JSON)
-├── .claude/skills/           # Global Skills (official format)
-├── bin/agent.cjs             # Global CLI entry (CommonJS wrapper)
-└── dist/                     # Build output
+│       ├── prompt-loader.ts      # Loads agent prompts from .md files
+│       ├── transcript.ts         # Session logging (text + JSON)
+│       └── message-handler.ts    # SDK message processing
+├── prompts/                      # Agent-specific system prompts (.md)
+├── .claude/skills/               # Global Skills
+├── bin/agent.cjs                 # Global CLI entry (CommonJS wrapper)
+└── dist/                         # Build output
 ```
 
 ## Multi-Agent System
 
-**Agent Types**:
-- **Coordinator** (🎯): Complex tasks requiring multi-agent orchestration
+**Agent Types** (defined in `config/agents.ts`):
+- **Coordinator** (🎯): Task decomposition, multi-agent dispatch via `[DISPATCH:agent]`
 - **Reader** (📖): Code reading, analysis, understanding
 - **Coder** (💻): Code writing, modification, implementation
 - **Reviewer** (🔍): Code review, quality checks, bug detection
 
-**Routing Logic** (`detectTaskType()` in `src/index.ts`):
-1. Skill commands have highest priority (`/code-review` → Reviewer)
-2. Keyword detection with word boundaries (e.g., "write", "add" → Coder)
-3. Default to Coordinator for complex/uncertain tasks
+**Routing Logic** (`core/router.ts`):
+1. Skill commands have highest priority (`/code-review` → Reviewer via `SKILL_AGENT_MAP`)
+2. Keyword detection with word boundaries (see `AGENT_KEYWORDS` in `config/agents.ts`)
+3. Default to Reader for understanding context first
+
+**Execution Modes** (via `runtime/orchestrator.ts`):
+- `single`: Direct agent execution
+- `parallel`: Multiple agents via `AgentPool`
+- `react`: Multi-step reasoning loop
+- `coordinator`: Reader → Coder → Reviewer pipeline
+
+**Inter-Agent Communication**:
+- `MessageBus` (`runtime/bus.ts`): EventEmitter-based pub/sub
+- `SharedContext` (`runtime/shared.ts`): Key-value store for cross-agent state
 
 ## Key Patterns
 
-**SDK Integration** (`src/index.ts`):
+**SDK Integration** (`agents/base.ts`):
 - Uses `@anthropic-ai/claude-agent-sdk`'s `query()` function
-- Configures: `settingSources`, `additionalDirectories`, `permissionMode`
-- Uses `claude_code` preset for tools and system prompt
-- Streams messages via async iterator
+- Configures: `settingSources: ["project"]`, `additionalDirectories`, `mcpServers`
+- Uses `permissionMode`: "acceptEdits" (safe) or "bypassPermissions" (unsafe)
+- Streams messages via async iterator, handles `system`, `assistant`, `result`, `tool_progress`
 
-**Skills Loading**:
-- Global skills: Loaded from `deepresearch/.claude/skills/` via `additionalDirectories`
-- Project skills: Loaded from `<cwd>/.claude/skills/` via `settingSources: ["project"]`
-- Internal skills (web-scrape, doc-generate, deep-research): Hidden from user menu
+**Skills Loading** (`index.ts: loadSkillsFromDir`):
+- Global skills: `deepresearch/.claude/skills/`
+- Project skills: `<cwd>/.claude/skills/`
+- Internal skills (hidden from menu): `web-scrape`, `doc-generate`, `deep-research`
 
-**File Attachment**:
-- When files are attached via `@`, the prompt instructs Claude to focus only on those files
-- File contents are injected with markers: `--- File: path ---`
+**Dispatch Pattern** (`index.ts: detectDispatch`):
+- Coordinator outputs `[DISPATCH:reader] task description`
+- Main loop parses these and spawns subagents
+- Results are fed back to Coordinator for synthesis
 
 **UI Components** (`src/ui/`):
 - All use raw `process.stdin` with `setRawMode(true)` for keyboard handling
-- `SmartInput`: Main input loop, detects `/` and `@` triggers
+- `SmartInput`: Main input, detects `/` and `@` triggers
 - `CommandPicker`: Arrow-key navigable popup for `/` commands
 - `FileBrowser`: Directory navigation + fuzzy search for `@` files
 
@@ -115,3 +151,4 @@ Instructions for Claude...
 - Kebab-case filenames
 - Use `.js` extension in imports (ESM requirement)
 - Run `npm run build` before committing to verify types
+- Global singletons: `getRouter()`, `getMessageBus()`, `getSharedContext()`, `getOrchestrator()`
