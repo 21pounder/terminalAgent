@@ -1,17 +1,23 @@
 ---
 name: deep-research
-description: Conduct deep code research using Dify-powered workflow - searches documentation, APIs, best practices, and returns structured implementation guidance.
-version: 3.0.0
+description: Conduct comprehensive deep research on any topic using Dify-powered workflow - searches documentation, academic papers, tutorials, APIs, best practices, and returns structured analysis with insights.
+version: 3.1.0
 allowed-tools: [Bash, Glob, Read]
 ---
 
 # Deep Research (Dify Powered)
 
-This skill delegates coding research to a specialized Dify Workflow that:
-1. Searches official documentation and tutorials
-2. Analyzes the coding task with DeepSeek Reasoner
-3. Iteratively searches for code examples, Stack Overflow solutions, and GitHub repos
-4. Generates a complete implementation guide with working code
+This skill delegates research tasks to a specialized Dify Workflow that:
+1. Searches official documentation, tutorials, and academic resources
+2. Analyzes the topic with DeepSeek Reasoner for deep insights
+3. Iteratively searches for examples, solutions, and related research
+4. Generates a comprehensive research report with structured findings
+
+**Use this skill for:**
+- Code implementation research (APIs, libraries, best practices)
+- Academic paper analysis and literature review
+- Technology comparison and evaluation
+- Any topic requiring comprehensive, structured research
 
 ## Parameters
 

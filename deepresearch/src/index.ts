@@ -312,11 +312,13 @@ Alternatively, run: pdftotext "${fullPath}" -
 /**
  * 使用 Agent 类运行指定类型的 Agent
  * 使用 AgentRegistry 管理 Agent 实例
+ * 支持 dispatch 到其他 agents
  */
 async function runAgent(
   agentType: SubagentType,
   prompt: string,
-  sessionId?: string
+  sessionId?: string,
+  depth: number = 0
 ): Promise<string | undefined> {
   console.log();
   console.log(fmt(`  ${icons.sparkle} Processing...`, colors.dim));
@@ -326,6 +328,7 @@ async function runAgent(
   const config = AGENT_CONFIGS[agentType];
   const agentIcon = AGENT_ICONS[agentType];
   let newSessionId: string | undefined;
+  let collectedText = "";  // Collect text to detect dispatches
 
   // 获取 Agent 实例
   const agent = agentRegistry.get(agentType);
@@ -339,7 +342,14 @@ async function runAgent(
       console.log();
     },
     onText: (text) => {
-      console.log(text);
+      collectedText += text + "\n";
+      // 检测派发指令（用于 UI 显示）
+      const dispatch = detectDispatch(text);
+      if (dispatch) {
+        console.log(fmt(`  ⤷ [DISPATCH:${dispatch.agent}] `, colors.accent) + fmt(dispatch.task.slice(0, 60) + "...", colors.dim));
+      } else {
+        console.log(text);
+      }
       if (currentTranscript) {
         currentTranscript.addAssistant(text);
       }
@@ -372,6 +382,39 @@ async function runAgent(
 
   try {
     await agent.execute(prompt, undefined, callbacks);
+
+    // Check for dispatch instructions in collected text
+    const dispatches = extractAllDispatches(collectedText);
+
+    if (dispatches.length > 0 && depth < MAX_SUBAGENT_DEPTH) {
+      console.log();
+      console.log(fmt(`  ═══ Executing ${dispatches.length} dispatched agent(s) ═══`, colors.accent));
+
+      for (const dispatch of dispatches) {
+        const subResult = await runSubagent(
+          dispatch.agent,
+          dispatch.task,
+          collectedText,  // Pass context
+          depth + 1
+        );
+
+        // If the subagent also dispatched, continue the chain
+        if (subResult.output) {
+          const subDispatches = extractAllDispatches(subResult.output);
+          if (subDispatches.length > 0 && depth + 1 < MAX_SUBAGENT_DEPTH) {
+            for (const subDispatch of subDispatches) {
+              await runSubagent(
+                subDispatch.agent,
+                subDispatch.task,
+                subResult.output,
+                depth + 2
+              );
+            }
+          }
+        }
+      }
+    }
+
     return newSessionId;
   } catch (error) {
     console.log(
@@ -380,6 +423,26 @@ async function runAgent(
     );
     return sessionId;
   }
+}
+
+/**
+ * Extract all dispatch instructions from text
+ */
+function extractAllDispatches(text: string): Array<{ agent: SubagentType; task: string }> {
+  const dispatches: Array<{ agent: SubagentType; task: string }> = [];
+  const pattern = /\[DISPATCH:(\w+)\]\s*(.+?)(?=\[DISPATCH:|$)/gis;
+
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const agentName = match[1].toLowerCase() as SubagentType;
+    const task = match[2].trim();
+
+    if (agentName in AGENT_CONFIGS && agentName !== "coordinator") {
+      dispatches.push({ agent: agentName, task });
+    }
+  }
+
+  return dispatches;
 }
 
 /**

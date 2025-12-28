@@ -36,13 +36,19 @@ export class Router {
       return skillDecision;
     }
 
-    // 2. 关键词匹配 - 只要命中任意关键词就路由
+    // 2. 检查文件类型（PDF等）- 需要特定 Skill 处理
+    const fileTypeDecision = this.checkFileType(lowerPrompt);
+    if (fileTypeDecision) {
+      return fileTypeDecision;
+    }
+
+    // 3. 关键词匹配 - 只要命中任意关键词就路由
     const keywordDecision = this.matchKeywords(lowerPrompt);
     if (keywordDecision.confidence > 0) {
       return keywordDecision;
     }
 
-    // 3. 默认使用 Reader（而非 Coordinator）- 先理解再行动
+    // 4. 默认使用 Reader（而非 Coordinator）- 先理解再行动
     return {
       agent: "reader",
       confidence: 0.3,
@@ -51,7 +57,32 @@ export class Router {
   }
 
   /**
+   * 检查文件类型，需要特定 Skill 处理
+   */
+  private checkFileType(prompt: string): RouteDecision | null {
+    // PDF 文件检测 - 路由到 Reader 使用 pdf-analyze skill
+    if (
+      prompt.includes(".pdf") ||
+      prompt.includes("[pdf file detected") ||
+      prompt.includes("pdf file") ||
+      prompt.includes("pdf 文件") ||
+      prompt.includes("分析 pdf") ||
+      prompt.includes("analyze pdf")
+    ) {
+      return {
+        agent: "reader",
+        confidence: 0.9,
+        reason: "PDF file detected: use pdf-analyze skill",
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * 检查 Skill 命令
+   * 只匹配显式的 /skill-name 命令，不做自然语言猜测
+   * Skills 由 SDK 自动发现，Claude 会根据 skill 的 name/description 自主决定使用
    */
   private checkSkillCommand(prompt: string): RouteDecision | null {
     for (const [skill, agent] of Object.entries(SKILL_AGENT_MAP)) {

@@ -18,7 +18,7 @@ export const AGENT_CONFIGS: Record<SubagentType, AgentConfig> = {
     type: "reader",
     description: "代码阅读和理解",
     promptFile: "reader.md",
-    canDispatch: false,
+    canDispatch: true,  // Enable dispatch to coder/reviewer
     allowedTools: ["Read", "Glob", "Grep", "LSP", "Bash", "Skill"],
   },
   coder: {
@@ -26,7 +26,7 @@ export const AGENT_CONFIGS: Record<SubagentType, AgentConfig> = {
     type: "coder",
     description: "代码编写和修改",
     promptFile: "coder.md",
-    canDispatch: false,
+    canDispatch: true,  // Enable dispatch to reader/reviewer
     allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "LSP", "NotebookEdit", "WebFetch", "Skill"],
   },
   reviewer: {
@@ -34,7 +34,7 @@ export const AGENT_CONFIGS: Record<SubagentType, AgentConfig> = {
     type: "reviewer",
     description: "代码审查和质量检查",
     promptFile: "reviewer.md",
-    canDispatch: false,
+    canDispatch: true,  // Enable dispatch to coder/reader
     allowedTools: ["Read", "Glob", "Grep", "Bash", "LSP", "Skill"],
   },
 };

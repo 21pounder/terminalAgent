@@ -5,6 +5,7 @@
  */
 import { BaseAgent, type AgentCallbacks } from "./base.js";
 import type { AgentResult } from "./types.js";
+import { generateToolRestrictionPrompt } from "../utils/tool-interceptor.js";
 
 /**
  * Reader Agent 类
@@ -77,7 +78,12 @@ export class ReaderAgent extends BaseAgent {
    * 构建系统提示词（覆盖基类）
    */
   protected buildFullSystemPrompt(): string {
+    // 生成工具限制提示词
+    const toolRestrictions = generateToolRestrictionPrompt("reader");
+
     return `${this.systemPrompt}
+
+${toolRestrictions}
 
 IMPORTANT Language Rules:
 - You MUST respond to the user in the same language they use
@@ -102,7 +108,7 @@ Focus on:
 3. Explaining how code works
 4. Finding relevant files and functions
 
-Do NOT modify any files. Only read and analyze.`;
+CRITICAL: You CANNOT use Write or Edit tools. If you need to write files, use [DISPATCH:coder] to hand off the task.`;
   }
 }
 

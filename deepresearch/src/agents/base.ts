@@ -9,6 +9,12 @@ import { createMessageTool, type MessageTool } from "../tools/message.js";
 import { createContextTool, type ContextTool } from "../tools/context.js";
 import { getMessageBus } from "../runtime/bus.js";
 import { getSharedContext } from "../runtime/shared.js";
+import {
+  isToolAllowed,
+  generateToolRestrictionPrompt,
+  logToolViolation,
+  findAgentForTool,
+} from "../utils/tool-interceptor.js";
 
 /**
  * Agent 执行回调
@@ -211,6 +217,13 @@ export abstract class BaseAgent {
                   output += block.text + "\n";
                   options.callbacks?.onText?.(block.text);
                 } else if (block.type === "tool_use") {
+                  // Check tool permission
+                  const toolAllowed = isToolAllowed(this.config.type, block.name);
+                  if (!toolAllowed) {
+                    logToolViolation(this.config.type, block.name, false);
+                    // Log violation but still report the tool use
+                    // (SDK already executed it, we can only warn)
+                  }
                   options.callbacks?.onToolUse?.(block.name, block.input);
                 }
               }
@@ -248,7 +261,12 @@ export abstract class BaseAgent {
    * 构建完整系统提示词
    */
   protected buildFullSystemPrompt(): string {
+    // 生成工具限制提示词
+    const toolRestrictions = generateToolRestrictionPrompt(this.config.type);
+
     return `${this.systemPrompt}
+
+${toolRestrictions}
 
 IMPORTANT Language Rules:
 - You MUST respond to the user in the same language they use
