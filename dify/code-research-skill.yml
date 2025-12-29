@@ -1,0 +1,796 @@
+app:
+  description: Deep Research skill for Claude Agent - searches documentation, APIs,
+    best practices, and returns structured implementation guidance.
+  icon: 🤖
+  icon_background: '#1a1a2e'
+  mode: workflow
+  name: Code Research Skill
+  use_icon_as_answer_icon: true
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/deepseek:0.0.8@db0962090d930c2e6c4c6ced76d2801ca4b3c5cee350460c4b03088c29b61346
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/openai:0.2.8@aae2be0913b8c6f0b80cff58e08d7a8b4c214569b41778413fcaea204561ff16
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/tavily:0.1.2@aa7a8744b2ccf3a7aec818da6c504997a6319b29040e541bfc73b4fbaa9e98d9
+    version: null
+kind: app
+version: 0.5.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: tool
+      id: start-to-bg
+      selected: false
+      source: start
+      sourceHandle: source
+      target: bg-search
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: tool
+        targetType: llm
+      id: bg-to-intent
+      selected: false
+      source: bg-search
+      sourceHandle: source
+      target: task-analysis
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: code
+      id: intent-to-code
+      selected: false
+      source: task-analysis
+      sourceHandle: source
+      target: generate-array
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: iteration
+      id: code-to-iteration
+      selected: false
+      source: generate-array
+      sourceHandle: source
+      target: iteration-node
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: true
+        sourceType: llm
+        targetType: tool
+      id: planner-to-search
+      selected: false
+      source: query-planner
+      sourceHandle: source
+      target: loop-search
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: true
+        sourceType: tool
+        targetType: llm
+      id: search-to-reason
+      selected: false
+      source: loop-search
+      sourceHandle: source
+      target: code-reasoning
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: iteration
+        targetType: llm
+      id: iteration-to-summary
+      selected: false
+      source: iteration-node
+      sourceHandle: source
+      target: implementation-guide
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: end
+      id: summary-to-end
+      selected: false
+      source: implementation-guide
+      sourceHandle: source
+      target: end
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: iteration-node
+        sourceType: iteration-start
+        targetType: llm
+      id: iteration-nodestart0-source-query-planner-target
+      selected: false
+      source: iteration-nodestart0
+      sourceHandle: source
+      target: query-planner
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    nodes:
+    - data:
+        desc: Input from Claude Agent
+        selected: false
+        title: Start
+        type: start
+        variables:
+        - label: Coding Task
+          max_length: 2000
+          options: []
+          required: true
+          type: paragraph
+          variable: coding_task
+        - label: Tech Stack
+          max_length: 500
+          options: []
+          required: false
+          type: text-input
+          variable: tech_stack
+        - label: Research Depth (1-5)
+          max_length: 1
+          options: []
+          required: true
+          type: text-input
+          variable: max_iterations
+      height: 188
+      id: start
+      position:
+        x: -146.86792511191436
+        y: 658.1987112615288
+      positionAbsolute:
+        x: -146.86792511191436
+        y: 658.1987112615288
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        desc: Initial search for relevant docs and examples
+        provider_id: tavily
+        provider_name: tavily
+        provider_type: builtin
+        selected: false
+        title: Background Search
+        tool_configurations:
+          include_answer:
+            type: constant
+            value: true
+          include_images:
+            type: constant
+            value: false
+          include_raw_content:
+            type: constant
+            value: false
+          max_results:
+            type: constant
+            value: 6
+          search_depth:
+            type: constant
+            value: advanced
+        tool_label: Tavily Search
+        tool_name: tavily_search
+        tool_node_version: '2'
+        tool_parameters:
+          query:
+            type: mixed
+            value: '{{#start.coding_task#}} {{#start.tech_stack#}} documentation tutorial'
+        type: tool
+      height: 235
+      id: bg-search
+      position:
+        x: 182.97778787551897
+        y: 190.10413160023722
+      positionAbsolute:
+        x: 182.97778787551897
+        y: 190.10413160023722
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Analyze coding task for Claude Agent
+        model:
+          completion_params:
+            max_tokens: 8000
+            temperature: 0.1
+          mode: chat
+          name: deepseek-reasoner
+          provider: langgenius/deepseek/deepseek
+        prompt_template:
+        - id: system-prompt
+          role: system
+          text: "You are a research assistant for a Claude coding agent. Analyze the\
+            \ coding task and prepare a research plan.\n\nYour output will be consumed\
+            \ by Claude Agent to guide its implementation. Be precise and actionable.\n\
+            \nAnalyze:\n1. What exactly needs to be implemented\n2. Which APIs/libraries/frameworks\
+            \ are involved\n3. What knowledge gaps need to be filled through search\n\
+            4. What are the critical technical decisions\n\nOutput JSON (this will\
+            \ be parsed by Claude Agent):\n{\n  \"task_summary\": \"One-line description\
+            \ of what needs to be done\",\n  \"task_type\": \"bug_fix|feature|refactor|optimization|integration|architecture\"\
+            ,\n  \"tech_requirements\": {\n    \"languages\": [\"typescript\", \"\
+            python\", etc],\n    \"frameworks\": [\"react\", \"nextjs\", etc],\n \
+            \   \"libraries\": [\"specific libs needed\"],\n    \"apis\": [\"external\
+            \ APIs to integrate\"]\n  },\n  \"implementation_scope\": {\n    \"files_to_create\"\
+            : [\"suggested new files\"],\n    \"files_to_modify\": [\"likely files\
+            \ to change\"],\n    \"estimated_complexity\": \"low|medium|high\"\n \
+            \ },\n  \"knowledge_gaps\": [\n    {\n      \"topic\": \"what needs to\
+            \ be researched\",\n      \"priority\": 1,\n      \"search_focus\": \"\
+            docs|examples|stackoverflow|github\"\n    }\n  ],\n  \"critical_decisions\"\
+            : [\n    \"Key architectural or design decisions to make\"\n  ],\n  \"\
+            search_queries\": [\"query1\", \"query2\", \"query3\"]\n}\n"
+        - id: user-prompt
+          role: user
+          text: 'Coding Task: {{#start.coding_task#}}
+
+            Tech Stack: {{#start.tech_stack#}}
+
+            Research Depth: {{#start.max_iterations#}}
+
+
+            Background Search Results:
+
+            {{#bg-search.text#}}
+
+            '
+        selected: false
+        title: Task Analysis
+        type: llm
+        vision:
+          enabled: false
+      height: 131
+      id: task-analysis
+      position:
+        x: 501.33651731298187
+        y: 867.8361610484876
+      positionAbsolute:
+        x: 501.33651731298187
+        y: 867.8361610484876
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        code: "def main(max_iterations: str) -> dict:\n    try:\n        count = int(max_iterations)\n\
+          \    except:\n        count = 3\n    if count < 1:\n        count = 1\n\
+          \    if count > 5:\n        count = 5\n    return {\n        \"iteration_list\"\
+          : list(range(count))\n    }\n"
+        code_language: python3
+        desc: Convert research depth to iteration array
+        outputs:
+          iteration_list:
+            children: null
+            type: array[number]
+        selected: true
+        title: Generate Array
+        type: code
+        variables:
+        - value_selector:
+          - start
+          - max_iterations
+          variable: max_iterations
+      height: 95
+      id: generate-array
+      position:
+        x: 762.260329000593
+        y: 241.79555757510383
+      positionAbsolute:
+        x: 762.260329000593
+        y: 241.79555757510383
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        desc: Iterative search for code solutions
+        error_handle_mode: terminated
+        height: 619
+        is_parallel: false
+        iterator_selector:
+        - generate-array
+        - iteration_list
+        output_selector:
+        - code-reasoning
+        - text
+        output_type: array[string]
+        parallel_nums: 10
+        selected: false
+        start_node_id: iteration-nodestart0
+        title: Research Loop
+        type: iteration
+        width: 1870
+      height: 619
+      id: iteration-node
+      position:
+        x: -381.7660534437198
+        y: 684.092099794825
+      positionAbsolute:
+        x: -381.7660534437198
+        y: 684.092099794825
+      selected: true
+      type: custom
+      width: 1870
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Generate targeted search query
+        model:
+          completion_params:
+            max_tokens: 200
+            temperature: 0.15
+          mode: chat
+          name: gpt-5-chat-latest
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: system-prompt
+          role: system
+          text: 'Generate ONE search query to find code solutions for Claude Agent.
+
+
+            Search Strategy by Iteration:
+
+            - 0: Official documentation + API reference
+
+            - 1: Code examples + working implementations
+
+            - 2: Stack Overflow solutions + common issues
+
+            - 3: GitHub repos + production code
+
+            - 4: Best practices + edge cases + performance
+
+
+            Output ONLY the search query string. Be specific:
+
+            - Include library/framework names
+
+            - Add version numbers if relevant
+
+            - Target: docs.*, github.com, stackoverflow.com
+
+            '
+        - id: user-prompt
+          role: user
+          text: 'Task: {{#start.coding_task#}}
+
+            Stack: {{#start.tech_stack#}}
+
+            Analysis: {{#task-analysis.text#}}
+
+            Iteration: {{#iteration-node.index#}}
+
+            '
+        selected: false
+        title: Query Planner
+        type: llm
+        vision:
+          enabled: false
+      height: 115
+      id: query-planner
+      parentId: iteration-node
+      position:
+        x: 762.260329000593
+        y: 168.10413160023722
+      positionAbsolute:
+        x: 380.49427555687316
+        y: 852.1962313950622
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        desc: Search coding resources
+        provider_id: tavily
+        provider_name: tavily
+        provider_type: builtin
+        selected: false
+        title: Code Search
+        tool_configurations:
+          include_answer:
+            type: constant
+            value: true
+          include_images:
+            type: constant
+            value: false
+          include_raw_content:
+            type: constant
+            value: false
+          max_results:
+            type: constant
+            value: 6
+          search_depth:
+            type: constant
+            value: advanced
+        tool_label: Tavily Search
+        tool_name: tavily_search
+        tool_node_version: '2'
+        tool_parameters:
+          query:
+            type: mixed
+            value: '{{#query-planner.text#}}'
+        type: tool
+      height: 219
+      id: loop-search
+      parentId: iteration-node
+      position:
+        x: 1066.0558865756966
+        y: 276.6171480502669
+      positionAbsolute:
+        x: 684.2898331319768
+        y: 960.7092478450919
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Extract code for Claude Agent to use
+        model:
+          completion_params:
+            max_tokens: 8000
+            temperature: 0.1
+          mode: chat
+          name: deepseek-reasoner
+          provider: langgenius/deepseek/deepseek
+        prompt_template:
+        - id: system-prompt
+          role: system
+          text: "Extract actionable code information for Claude Agent to implement\
+            \ the task.\n\nFocus on extracting:\n1. WORKING CODE SNIPPETS that can\
+            \ be directly used or adapted\n2. API signatures with parameters and return\
+            \ types\n3. Import statements and dependencies\n4. Configuration examples\n\
+            5. Common pitfalls and how to avoid them\n\nOutput JSON (Claude Agent\
+            \ will parse this):\n{\n  \"iteration\": <number>,\n  \"search_type\"\
+            : \"docs|examples|stackoverflow|github|best_practices\",\n  \"code_snippets\"\
+            : [\n    {\n      \"purpose\": \"What this code does\",\n      \"language\"\
+            : \"typescript|python|etc\",\n      \"code\": \"actual code here\",\n\
+            \      \"imports\": [\"required imports\"],\n      \"dependencies\": [\"\
+            package@version\"],\n      \"source_url\": \"URL\",\n      \"usage_notes\"\
+            : \"How to adapt this code\"\n    }\n  ],\n  \"api_signatures\": [\n \
+            \   {\n      \"name\": \"functionName\",\n      \"signature\": \"full\
+            \ function signature\",\n      \"params\": [{\"name\": \"param\", \"type\"\
+            : \"type\", \"description\": \"desc\"}],\n      \"returns\": \"return\
+            \ type and description\",\n      \"example\": \"usage example\"\n    }\n\
+            \  ],\n  \"configuration\": {\n    \"env_vars\": [\"REQUIRED_VAR=value\"\
+            ],\n    \"config_files\": [{\"file\": \"filename\", \"content\": \"config\
+            \ content\"}]\n  },\n  \"gotchas\": [\n    {\n      \"issue\": \"Common\
+            \ mistake\",\n      \"solution\": \"How to fix it\",\n      \"code_fix\"\
+            : \"corrected code if applicable\"\n    }\n  ],\n  \"remaining_questions\"\
+            : [\"What still needs to be researched\"]\n}\n"
+        - id: user-prompt
+          role: user
+          text: 'Task: {{#start.coding_task#}}
+
+            Stack: {{#start.tech_stack#}}
+
+            Iteration: {{#iteration-node.index#}}
+
+            Query: {{#query-planner.text#}}
+
+
+            Search Results:
+
+            {{#loop-search.text#}}
+
+
+            Extract code information for Claude Agent:
+
+            '
+        selected: false
+        title: Code Reasoning
+        type: llm
+        vision:
+          enabled: false
+      height: 115
+      id: code-reasoning
+      parentId: iteration-node
+      position:
+        x: 1367.9015995631303
+        y: 294.1542870125668
+      positionAbsolute:
+        x: 986.1355461194105
+        y: 978.2463868073918
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Generate implementation plan for Claude Agent
+        model:
+          completion_params:
+            max_tokens: 6000
+            temperature: 0.2
+          mode: chat
+          name: gpt-5-chat-latest
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: system-prompt
+          role: system
+          text: 'You are generating an implementation guide that Claude Agent will
+            use to write code.
+
+
+            Claude Agent will READ this output and then WRITE the actual code files.
+            Make your output:
+
+            1. DIRECTLY ACTIONABLE - Claude should be able to implement immediately
+
+            2. CODE-FIRST - Provide complete, working code blocks
+
+            3. SPECIFIC - No vague suggestions, only concrete implementations
+
+
+            ## OUTPUT FORMAT
+
+
+            ### TASK_SUMMARY
+
+            One paragraph: what to build and the approach
+
+
+            ### DEPENDENCIES
+
+            ```bash
+
+            # Install commands
+
+            npm install package1 package2
+
+            # or
+
+            pip install package1 package2
+
+            ```
+
+
+            ### FILES_TO_CREATE
+
+            For each new file:
+
+
+            **File: `path/to/file.ts`**
+
+            ```typescript
+
+            // Complete, working code
+
+            // With all imports
+
+            // And proper types
+
+            ```
+
+
+            ### FILES_TO_MODIFY
+
+            For each existing file to change:
+
+
+            **File: `path/to/existing.ts`**
+
+            ```typescript
+
+            // ADD this code:
+
+            // ... new code to add ...
+
+
+            // MODIFY this function:
+
+            // ... updated code ...
+
+            ```
+
+
+            ### ENVIRONMENT_CONFIG
+
+            ```env
+
+            REQUIRED_VAR=value
+
+            ANOTHER_VAR=value
+
+            ```
+
+
+            ### VERIFICATION
+
+            ```bash
+
+            # Commands to test the implementation
+
+            npm run test
+
+            curl http://localhost:3000/api/endpoint
+
+            ```
+
+
+            ### GOTCHAS
+
+            - Specific issues to watch for
+
+            - Edge cases to handle
+
+            - Version compatibility notes
+
+
+            ### SOURCES
+
+            - [Source](URL) - what was learned from this source
+
+
+            ---
+
+            CRITICAL: Provide COMPLETE code. Claude Agent will copy this directly
+            into files.
+
+            Do not use placeholders like "// implement here" or "...". Write the full
+            implementation.
+
+            '
+        - id: user-prompt
+          role: user
+          text: '## TASK
+
+            {{#start.coding_task#}}
+
+
+            ## TECH STACK
+
+            {{#start.tech_stack#}}
+
+
+            ## TASK ANALYSIS
+
+            {{#task-analysis.text#}}
+
+
+            ## BACKGROUND RESEARCH
+
+            {{#bg-search.text#}}
+
+
+            ## DETAILED CODE RESEARCH
+
+            {{#iteration-node.output#}}
+
+
+            Generate the implementation guide for Claude Agent:
+
+            '
+        selected: false
+        title: Implementation Guide
+        type: llm
+        vision:
+          enabled: false
+      height: 131
+      id: implementation-guide
+      position:
+        x: 1956
+        y: 282
+      positionAbsolute:
+        x: 1956
+        y: 282
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - implementation-guide
+          - text
+          variable: guide
+        - value_selector:
+          - task-analysis
+          - text
+          variable: analysis
+        selected: false
+        title: End
+        type: end
+      height: 114
+      id: end
+      position:
+        x: 2260
+        y: 282
+      positionAbsolute:
+        x: 2260
+        y: 282
+      type: custom
+      width: 242
+    - data:
+        desc: ''
+        isInIteration: true
+        selected: false
+        title: ''
+        type: iteration-start
+      draggable: false
+      height: 48
+      id: iteration-nodestart0
+      parentId: iteration-node
+      position:
+        x: 24
+        y: 68
+      positionAbsolute:
+        x: -357.7660534437198
+        y: 752.092099794825
+      selectable: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom-iteration-start
+      width: 44
+      zIndex: 1002
+    viewport:
+      x: -1482.2536204356636
+      y: -94.02592458161087
+      zoom: 0.8705505632961251
+  rag_pipeline_variables: []

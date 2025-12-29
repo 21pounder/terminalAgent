@@ -1,5 +1,7 @@
 # Terminal Coding Agent
 
+[中文文档](./README_CN.md) | English
+
 A powerful CLI-based multi-agent coding assistant powered by [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk).
 
 <p align="center">
@@ -182,8 +184,49 @@ terminalAgent/
 │   │   └── skills/               # Skill definitions
 │   ├── bin/agent.cjs             # CLI entry point
 │   └── package.json
+├── dify/                         # Dify workflow configs
+│   └── code-research-skill.yml   # Deep research workflow DSL
 ├── CLAUDE.md                     # Instructions for Claude Code
 └── README.md
+```
+
+## Deep Research (Dify Integration)
+
+This project integrates Dify workflows for deep research capabilities. The workflow includes:
+
+### Workflow Architecture
+
+```
+Start → Background Search → Task Analysis → Research Loop → Implementation Guide → End
+                                 ↓
+                      [DeepSeek Reasoner]
+                                 ↓
+              ┌──────────────────────────┐
+              │   Research Loop (1-5x)   │
+              │  ┌─────────────────────┐ │
+              │  │ Plan → Search → Reason│ │
+              │  └─────────────────────┘ │
+              └──────────────────────────┘
+```
+
+### Models Used
+
+| Node | Model | Purpose |
+|------|-------|---------|
+| Task Analysis | DeepSeek Reasoner | Deep analysis of coding tasks |
+| Query Planner | GPT-5 | Generate precise search queries |
+| Code Reasoning | DeepSeek Reasoner | Extract actionable code info |
+| Implementation Guide | GPT-5 | Generate complete implementation |
+
+### Configure Dify
+
+1. Create an account at [Dify](https://dify.ai)
+2. Import the `dify/code-research-skill.yml` workflow
+3. Configure in `.env`:
+
+```env
+DIFY_API_KEY=your-dify-api-key
+DIFY_BASE_URL=https://api.dify.ai/v1
 ```
 
 ## Custom Skills
