@@ -81,10 +81,10 @@ export class Router {
 
   /**
    * 检查 Skill 命令
-   * 只匹配显式的 /skill-name 命令，不做自然语言猜测
-   * Skills 由 SDK 自动发现，Claude 会根据 skill 的 name/description 自主决定使用
+   * 匹配显式命令和关键自然语言表达
    */
   private checkSkillCommand(prompt: string): RouteDecision | null {
+    // 1. 显式命令匹配
     for (const [skill, agent] of Object.entries(SKILL_AGENT_MAP)) {
       if (
         prompt.includes(`use the "${skill}" skill`) ||
@@ -97,6 +97,36 @@ export class Router {
         };
       }
     }
+
+    // 2. 自然语言匹配 - 特定 skill 的触发词
+    const skillTriggers: Record<string, string[]> = {
+      "deep-research": [
+        "deep research", "深度研究", "detailed research", "comprehensive research",
+        "深入研究", "详细研究", "全面研究", "research in depth"
+      ],
+      "code-review": [
+        "code review", "代码审查", "review my code", "审查代码"
+      ],
+      "pdf-analyze": [
+        "analyze pdf", "分析pdf", "pdf分析", "read pdf", "读取pdf"
+      ],
+    };
+
+    for (const [skill, triggers] of Object.entries(skillTriggers)) {
+      for (const trigger of triggers) {
+        if (prompt.includes(trigger)) {
+          const agent = SKILL_AGENT_MAP[skill];
+          if (agent) {
+            return {
+              agent,
+              confidence: 0.95,
+              reason: `Natural language skill trigger: ${skill} (matched: "${trigger}")`,
+            };
+          }
+        }
+      }
+    }
+
     return null;
   }
 

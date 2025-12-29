@@ -584,7 +584,7 @@ function loadSkillsFromDir(skillsDir: string, excludeInternal: boolean = false):
   const skillCommands: Command[] = [];
 
   // 内部 Skills，仅供 Agent 使用，用户无法通过 / 命令触发
-  const internalSkills = ["web-scrape", "doc-generate", "deep-research"];
+  const internalSkills = ["web-scrape", "deep-research"];
 
   if (fs.existsSync(skillsDir)) {
     try {
@@ -618,7 +618,7 @@ function loadSkillsFromDir(skillsDir: string, excludeInternal: boolean = false):
 
 /**
  * 构建命令列表（内置 + 全局 Skills + 项目 Skills）
- * 注意：内部 Skills (web-scrape, doc-generate, deep-research) 不显示在菜单中
+ * 注意：内部 Skills (web-scrape, deep-research) 不显示在菜单中
  */
 function buildCommandList(): Command[] {
   const builtinCommands: Command[] = [

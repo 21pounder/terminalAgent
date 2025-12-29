@@ -38,7 +38,7 @@ export const CONTEXT_COMPRESSION = {
 };
 
 // 内部 Skills（用户不可见）
-export const INTERNAL_SKILLS = ["web-scrape", "doc-generate", "deep-research"];
+export const INTERNAL_SKILLS = ["web-scrape", "deep-research"];
 
 // Agent 超时（毫秒）
 export const AGENT_TIMEOUT = 300000; // 5 分钟

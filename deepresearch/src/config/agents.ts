@@ -96,13 +96,11 @@ export const SKILL_AGENT_MAP: Record<string, SubagentType> = {
 
   // Coder Skills
   "git-commit": "coder",
-  "doc-generate": "coder",
 
   // Reviewer Skills
   "code-review": "reviewer",
 
   // Coordinator Skills (需要多Agent协调)
-  "debug-complex": "coordinator",
   "web-scrape": "coordinator",
   "deep-research": "coordinator",
 };
