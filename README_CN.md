@@ -5,10 +5,17 @@
 一个基于 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk) 的强大命令行多智能体编程助手。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-7.0.0-blue" alt="Version">
-  <img src="https://img.shields.io/badge/TypeScript-5.9-blue" alt="TypeScript">
-  <img src="https://img.shields.io/badge/Claude-Agent%20SDK-orange" alt="Claude Agent SDK">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <a href="https://github.com/yourusername/terminalAgent/releases"><img src="https://img.shields.io/badge/version-7.0.0-blue" alt="Version"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="https://github.com/anthropics/claude-agent-sdk"><img src="https://img.shields.io/badge/Claude-Agent%20SDK-orange?logo=anthropic" alt="Claude Agent SDK"></a>
+  <a href="https://dify.ai"><img src="https://img.shields.io/badge/Dify-Workflow-1C64F2?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyeiIvPjwvc3ZnPg==" alt="Dify"></a>
+  <a href="https://playwright.dev"><img src="https://img.shields.io/badge/Playwright-1.57-2EAD33?logo=playwright&logoColor=white" alt="Playwright"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white" alt="Node.js"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+</p>
+
+<p align="center">
+  <img src="./docs/images/terminal-demo.png" alt="终端演示" width="700">
 </p>
 
 ## 特性
@@ -19,6 +26,38 @@
 - **交互式 UI** - `/` 命令菜单和 `@` 文件浏览器，操作便捷
 - **网页抓取** - 内置 Playwright 集成，支持网页内容提取
 - **深度研究** - Dify 驱动的综合研究工作流
+
+## 技能系统
+
+扩展智能体能力的内置技能：
+
+| 技能 | 描述 | 智能体 |
+|------|------|--------|
+| `/code-review` | 分析代码质量，查找 Bug 和安全问题 | Reviewer |
+| `/git-commit` | 创建规范的 Conventional Commits | Coder |
+| `/pdf-analyze` | 从 PDF 提取文本/表格，填写表单 | Reader |
+| `/web-scrape` | 使用 Playwright 抓取网页内容（内部） | Coordinator |
+| `/deep-research` | 通过 Dify 工作流进行综合研究（内部） | Coordinator |
+
+### 创建自定义技能
+
+在 `.claude/skills/<技能名称>/SKILL.md` 创建技能：
+
+```markdown
+---
+name: my-skill
+description: 技能功能描述
+version: 1.0.0
+allowed-tools:
+  - Read
+  - Write
+  - Bash
+---
+
+# 我的自定义技能
+
+Claude 执行此技能的指令...
+```
 
 ## 快速开始
 
@@ -72,19 +111,6 @@ agent /code-review       # 调用技能
 
 ## 使用方法
 
-### 交互模式
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║            Terminal Coding Agent v7.0                        ║
-╚══════════════════════════════════════════════════════════════╝
-
-Your AI assistant for coding tasks.
-Ask me any questions. Type 'exit' or 'quit' to end.
-
-❯ /code-review src/index.ts
-```
-
 ### 命令
 
 | 命令 | 描述 |
@@ -95,14 +121,6 @@ Ask me any questions. Type 'exit' or 'quit' to end.
 | `/exit` | 退出程序 |
 | `@` | 打开文件浏览器 |
 | `@file.ts` | 附加文件到上下文 |
-
-### 内置技能
-
-| 技能 | 描述 |
-|------|------|
-| `/code-review` | 分析代码质量，查找 Bug 和安全问题 |
-| `/git-commit` | 创建规范的 Conventional Commits |
-| `/pdf-analyze` | 从 PDF 提取文本/表格，填写表单 |
 
 ## 架构
 
@@ -156,43 +174,13 @@ Ask me any questions. Type 'exit' or 'quit' to end.
 | `WebSearch` | 网络搜索 |
 | `Skill` | 调用技能 |
 
-## 项目结构
-
-```
-terminalAgent/
-├── deepresearch/
-│   ├── src/
-│   │   ├── index.ts              # 主入口
-│   │   ├── agents/               # 智能体实现
-│   │   │   ├── base.ts           # BaseAgent 基类
-│   │   │   ├── coordinator.ts    # Coordinator 智能体
-│   │   │   ├── reader.ts         # Reader 智能体
-│   │   │   ├── coder.ts          # Coder 智能体
-│   │   │   └── reviewer.ts       # Reviewer 智能体
-│   │   ├── core/
-│   │   │   ├── router.ts         # 智能路由逻辑
-│   │   │   └── session.ts        # 会话管理
-│   │   ├── config/
-│   │   │   ├── agents.ts         # 智能体配置
-│   │   │   └── constants.ts      # 常量定义
-│   │   ├── ui/
-│   │   │   ├── smart-input.ts    # "/" 和 "@" 输入
-│   │   │   ├── commands.ts       # 命令选择器
-│   │   │   └── file-browser.ts   # 文件浏览器
-│   │   └── prompts/              # 智能体系统提示词
-│   ├── .claude/
-│   │   └── skills/               # 技能定义
-│   ├── bin/agent.cjs             # CLI 入口
-│   └── package.json
-├── dify/                         # Dify 工作流配置
-│   └── code-research-skill.yml   # 深度研究工作流 DSL
-├── CLAUDE.md                     # Claude Code 指令
-└── README.md
-```
-
 ## 深度研究功能（Dify 集成）
 
-本项目集成了 Dify 工作流来实现深度研究功能。工作流包含：
+本项目集成了 Dify 工作流来实现深度研究功能。
+
+<p align="center">
+  <img src="./docs/images/dify-workflow.png" alt="Dify 工作流" width="800">
+</p>
 
 ### 工作流架构
 
@@ -229,24 +217,39 @@ DIFY_API_KEY=你的Dify-API-Key
 DIFY_BASE_URL=https://api.dify.ai/v1
 ```
 
-## 自定义技能
+## 项目结构
 
-在 `.claude/skills/<技能名称>/SKILL.md` 创建自定义技能：
-
-```markdown
----
-name: my-skill
-description: 技能功能描述
-version: 1.0.0
-allowed-tools:
-  - Read
-  - Write
-  - Bash
----
-
-# 我的自定义技能
-
-Claude 执行此技能的指令...
+```
+terminalAgent/
+├── deepresearch/
+│   ├── src/
+│   │   ├── index.ts              # 主入口
+│   │   ├── agents/               # 智能体实现
+│   │   │   ├── base.ts           # BaseAgent 基类
+│   │   │   ├── coordinator.ts    # Coordinator 智能体
+│   │   │   ├── reader.ts         # Reader 智能体
+│   │   │   ├── coder.ts          # Coder 智能体
+│   │   │   └── reviewer.ts       # Reviewer 智能体
+│   │   ├── core/
+│   │   │   ├── router.ts         # 智能路由逻辑
+│   │   │   └── session.ts        # 会话管理
+│   │   ├── config/
+│   │   │   ├── agents.ts         # 智能体配置
+│   │   │   └── constants.ts      # 常量定义
+│   │   ├── ui/
+│   │   │   ├── smart-input.ts    # "/" 和 "@" 输入
+│   │   │   ├── commands.ts       # 命令选择器
+│   │   │   └── file-browser.ts   # 文件浏览器
+│   │   └── prompts/              # 智能体系统提示词
+│   ├── .claude/
+│   │   └── skills/               # 技能定义
+│   ├── bin/agent.cjs             # CLI 入口
+│   └── package.json
+├── dify/                         # Dify 工作流配置
+│   └── code-research-skill.yml   # 深度研究工作流 DSL
+├── docs/images/                  # 文档图片
+├── CLAUDE.md                     # Claude Code 指令
+└── README.md
 ```
 
 ## 环境变量
@@ -258,6 +261,24 @@ Claude 执行此技能的指令...
 | `ANTHROPIC_MODEL` | 使用的模型（默认: claude-sonnet-4-20250514） | 否 |
 | `DIFY_API_KEY` | Dify API 密钥（用于深度研究） | 否 |
 | `DIFY_BASE_URL` | Dify API 端点 | 否 |
+
+## 技术栈
+
+<p align="center">
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js"></a>
+  <a href="https://github.com/anthropics/claude-agent-sdk"><img src="https://img.shields.io/badge/Claude_SDK-FF6B35?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude SDK"></a>
+  <a href="https://playwright.dev"><img src="https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white" alt="Playwright"></a>
+  <a href="https://dify.ai"><img src="https://img.shields.io/badge/Dify-1C64F2?style=for-the-badge" alt="Dify"></a>
+  <a href="https://cheerio.js.org/"><img src="https://img.shields.io/badge/Cheerio-E88C1F?style=for-the-badge" alt="Cheerio"></a>
+</p>
+
+- **TypeScript** - 类型安全开发
+- **@anthropic-ai/claude-agent-sdk** - Claude Agent SDK 多智能体编排
+- **Playwright** - 网页自动化和抓取
+- **Cheerio** - HTML 解析和操作
+- **Dify** - 深度研究工作流引擎
+- **dotenv** - 环境配置
 
 ## 开发
 
@@ -277,15 +298,6 @@ npm start
 # 测试 UI 组件
 cd deepresearch && npm run test:ui
 ```
-
-## 技术栈
-
-- **TypeScript** - 类型安全开发
-- **@anthropic-ai/claude-agent-sdk** - Claude Agent SDK
-- **Playwright** - 网页自动化和抓取
-- **Cheerio** - HTML 解析
-- **dotenv** - 环境配置
-- **Dify** - 深度研究工作流
 
 ## 许可证
 
