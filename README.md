@@ -4,6 +4,8 @@
 
 A powerful CLI-based multi-agent coding assistant powered by [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk).
 
+> **Rust version available**: [rust-terminal-coding-agent](https://github.com/21pounder/rust-terminal-coding-agent)
+
 <p align="center">
   <a href="https://github.com/yourusername/terminalAgent/releases"><img src="https://img.shields.io/badge/version-7.0.0-blue" alt="Version"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>

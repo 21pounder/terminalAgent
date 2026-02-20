@@ -4,6 +4,8 @@
 
 一个基于 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk) 的强大命令行多智能体编程助手。
 
+> **Rust 版本**: [rust-terminal-coding-agent](https://github.com/21pounder/rust-terminal-coding-agent)
+
 <p align="center">
   <a href="https://github.com/yourusername/terminalAgent/releases"><img src="https://img.shields.io/badge/version-7.0.0-blue" alt="Version"></a>
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white" alt="TypeScript"></a>
